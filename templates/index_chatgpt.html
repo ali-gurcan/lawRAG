@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hukuki AI Asistan</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style_chatgpt.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L4 6V12C4 16.5 8 20 12 22C16 20 20 16.5 20 12V6L12 2Z" fill="#10a37f" stroke="#10a37f" stroke-width="1.5"/>
+                    <path d="M9 12L11 14L15 10" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Hukuki AI</span>
+            </div>
+        </div>
+
+        <div class="sidebar-content">
+            <button class="new-chat-btn" onclick="newChat()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+                Yeni Sohbet
+            </button>
+
+            <div class="sidebar-section">
+                <div class="section-title">Hızlı Sorular</div>
+                <button class="sidebar-item" onclick="sendQuickQuestion('Cumhuriyetin nitelikleri nelerdir?')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Cumhuriyet nitelikleri
+                </button>
+                <button class="sidebar-item" onclick="sendQuickQuestion('İnsan hakları nelerdir?')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    İnsan hakları
+                </button>
+                <button class="sidebar-item" onclick="sendQuickQuestion('Eğitim hakkı nedir?')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Eğitim hakkı
+                </button>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-title">📄 Yüklü PDF'ler</div>
+                <div id="pdfList" class="pdf-list">
+                    <div class="loading-pdfs">Yükleniyor...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="system-status" id="systemStatus">
+                <div class="status-dot"></div>
+                <span>RAG Sistemi Hazır</span>
+            </div>
+            <div class="stat-item">
+                <span id="chunkCount">-</span> bilgi parçası
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="main-content">
+        <!-- Model Info Header -->
+        <div class="model-info-header">
+            <div class="model-badges" id="modelBadges">
+                <div class="model-badge embedding-badge">
+                    <span class="badge-icon">🔍</span>
+                    <span class="badge-label">Embedding:</span>
+                    <span class="badge-value" id="embeddingModel">Yükleniyor...</span>
+                </div>
+                <div class="model-badge llm-badge">
+                    <span class="badge-icon">🦙</span>
+                    <span class="badge-label">LLM:</span>
+                    <span class="badge-value" id="llmModel">Yükleniyor...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <!-- Welcome Screen -->
+            <div class="welcome-screen" id="welcomeScreen">
+                <div class="welcome-content">
+                    <h1>⚖️ Hukuki AI Asistan</h1>
+                    <p>Türkiye hukuk mevzuatı hakkında sorular sorun. PDF dokümanlardan bilgi çekerek size yardımcı oluyorum.</p>
+                    
+                    <div class="example-grid">
+                        <button class="example-card" onclick="sendExample(this)">
+                            <div class="example-icon">🏛️</div>
+                            <div class="example-text">Cumhuriyetin temel nitelikleri nelerdir?</div>
+                        </button>
+                        <button class="example-card" onclick="sendExample(this)">
+                            <div class="example-icon">👥</div>
+                            <div class="example-text">İnsan hakları ve özgürlükler nelerdir?</div>
+                        </button>
+                        <button class="example-card" onclick="sendExample(this)">
+                            <div class="example-icon">📖</div>
+                            <div class="example-text">Eğitim hakkı nasıl tanımlanır?</div>
+                        </button>
+                        <button class="example-card" onclick="sendExample(this)">
+                            <div class="example-icon">💼</div>
+                            <div class="example-text">Çalışma hakkı nedir?</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer"></div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    id="messageInput" 
+                    placeholder="Hukuki sorunuzu yazın..."
+                    rows="1"
+                    maxlength="1000"
+                ></textarea>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="input-footer">
+                <span class="char-count"><span id="charCount">0</span>/1000</span>
+                <span class="powered-by">RAG ile güçlendirilmiştir</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Toggle -->
+    <button class="mobile-menu-toggle" onclick="toggleSidebar()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+        </svg>
+    </button>
+
+    <script src="{{ url_for('static', filename='js/script_chatgpt.js') }}"></script>
+</body>
+</html>
+

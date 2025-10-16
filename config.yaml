@@ -1,0 +1,56 @@
+# RAG System Configuration
+# Edit this file to customize your RAG system
+
+# Active Models (choose from catalog)
+active_models:
+  embedding: e5-large    # Options: e5-large, mpnet, minilm
+  llm: llama-1b          # Llama 3.2-1B-Instruct (requires HF_TOKEN)
+  reranker: ms-marco
+
+# Retrieval Configuration
+retrieval:
+  top_k: 3
+  use_hybrid_search: true
+  use_reranking: true
+  use_query_expansion: true
+  hybrid_alpha: 0.7        # 70% dense, 30% BM25
+  reranking_beta: 0.6      # 60% reranker, 40% retrieval
+  retrieval_k_multiplier: 3
+
+# Chunking Configuration
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 100
+  use_article_chunking: true  # For legal documents (MADDE X-)
+  min_chunk_size: 100
+  max_chunk_size: 2000
+
+# Cache Configuration
+cache:
+  cache_dir: cache
+  chunks_file: chunks.pkl
+  index_file: faiss.index
+  bm25_file: bm25.pkl
+  embeddings_file: embeddings.pkl
+  enable_cache: true
+  force_refresh: false
+
+# Server Configuration
+server:
+  host: 0.0.0.0
+  port: 5001
+  debug: false
+  threaded: true
+
+# Confidence Scoring
+confidence:
+  low_threshold: 60
+  medium_threshold: 80
+  enable_warnings: true
+
+# Streaming Configuration
+streaming:
+  enable_streaming: true
+  chunk_size: 1
+  buffer_size: 5
+
