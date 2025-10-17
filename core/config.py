@@ -192,6 +192,19 @@ class RAGConfig:
                 top_p=0.9,
                 repetition_penalty=1.1
             ),
+            'llama-8b': LLMModelConfig(
+                name='meta-llama/Llama-3.1-8B-Instruct',
+                display_name='Llama-3.1-8B',
+                size_gb=9.0,
+                quality_score=9.2,
+                requires_token=True,
+                device='cpu',
+                dtype='float32',
+                max_new_tokens=512,
+                temperature=0.3,
+                top_p=0.9,
+                repetition_penalty=1.1
+            ),
             'qwen-1.5b': LLMModelConfig(
                 name='Qwen/Qwen2.5-1.5B-Instruct',
                 display_name='Qwen-1.5B',
@@ -228,7 +241,7 @@ class RAGConfig:
         
         # Active models (selected from catalog)
         self.active_embedding_model = 'e5-large'
-        self.active_llm_model = 'llama-1b'
+        self.active_llm_model = 'llama-8b'
         self.active_reranker_model = 'ms-marco'
         
         # Other configs

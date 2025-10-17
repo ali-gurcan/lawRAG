@@ -3,6 +3,11 @@ RAG-based Flask Application with OOP Design
 Clean architecture using design patterns
 """
 import os
+# M4 Mac OpenMP fix
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
+
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from dotenv import load_dotenv
 

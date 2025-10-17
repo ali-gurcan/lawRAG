@@ -124,6 +124,48 @@ class RAGEngine:
             print(f"      ❌ LLM yüklenemedi: {str(e)}")
             raise
 
+    def load_cache(self) -> bool:
+        """
+        Load cached data (chunks, embeddings, index, BM25)
+        Returns True if cache loaded successfully, False otherwise
+        """
+        try:
+            # Check if all cache files exist
+            cache_files = [self.chunks_cache, self.embeddings_cache, self.index_cache]
+            if self.use_hybrid_search:
+                cache_files.append(self.bm25_cache)
+            
+            if not all(os.path.exists(f) for f in cache_files):
+                print("   💡 Cache files not found, will create new ones")
+                return False
+            
+            print("   📂 Loading cached data...")
+            
+            # Load chunks
+            with open(self.chunks_cache, 'rb') as f:
+                self.chunks = pickle.load(f)
+            print(f"      ✅ Chunks loaded: {len(self.chunks)} chunks")
+            
+            # Load embeddings and index
+            with open(self.embeddings_cache, 'rb') as f:
+                embeddings = pickle.load(f)
+            
+            self.index = faiss.read_index(self.index_cache)
+            self.dimension = self.index.d
+            print(f"      ✅ FAISS index loaded: {self.index.ntotal} vectors")
+            
+            # Load BM25 if hybrid search is enabled
+            if self.use_hybrid_search and os.path.exists(self.bm25_cache):
+                with open(self.bm25_cache, 'rb') as f:
+                    self.bm25 = pickle.load(f)
+                print(f"      ✅ BM25 index loaded")
+            
+            print("   🚀 Cache loaded successfully!")
+            return True
+            
+        except Exception as e:
+            print(f"   ⚠️  Cache loading failed: {str(e)}")
+            return False
     
     def process_pdfs(self, pdf_paths: List[str], force_refresh=False):
         """
@@ -447,8 +489,8 @@ class RAGEngine:
         
         avg_confidence = total_confidence / len(results)
         
-        # Combine top contexts for better answer
-        combined_context = "\n\n".join(contexts[:2])  # Top 2 chunks
+        # Combine more top contexts for better answer coverage
+        combined_context = "\n\n".join(contexts[:4])  # Top 4 chunks
         
         # Determine if we should use LLM
         if use_llm is None:
@@ -571,59 +613,63 @@ class RAGEngine:
         yield "data: " + json.dumps({'type': 'done'}) + "\n\n"
     
     def _generate_with_llm_stream(self, query: str, context: str):
-        """Stream tokens from LLM"""
-        import json
+        """Stream tokens from LLM using TextIteratorStreamer for non-blocking SSE."""
+        from transformers import TextIteratorStreamer
+        import threading
         
-        prompt = f"""Türkiye Cumhuriyeti Anayasası hakkında sorulan soruya, verilen bilgilere dayanarak kısa ve net bir cevap ver.
-
-Soru: {query}
-
-Anayasa'dan İlgili Bilgiler:
-{context}
-
-Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen bilgilere dayanarak cevap ver. Eğer bilgi yetersizse, bunu belirt."""
-
-        messages = [{"role": "user", "content": prompt}]
+        # Build prompt
+        prompt = (
+            "Türkiye Cumhuriyeti Anayasası hakkında sorulan soruya, verilen bilgilere dayanarak kısa ve net bir cevap ver.\n\n"
+            f"Soru: {query}\n\n"
+            "Anayasa'dan İlgili Bilgiler:\n"
+            f"{context}\n\n"
+            "Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen bilgilere dayanarak cevap ver. Eğer bilgi yetersizse, bunu belirt."
+        )
+        system_msg = (
+            "Türkiye Cumhuriyeti Anayasası için sıkı RAG kuralı uygula. Sadece verilen bağlamdan yanıt ver. "
+            "Uydurma yapma, emin değilsen 'Bilmiyorum' de. Yanıtı kısa, net ve Türkçe yaz. "
+            "Sonunda mutlaka kaynak bilgisini ver (ör. 'Kaynak: anayasa.pdf', varsa maddeyi ekle)."
+        )
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": prompt}
+        ]
         
-        # Tokenize
+        # Tokenize and move to correct device
         inputs = self.llm_tokenizer.apply_chat_template(
             messages,
             add_generation_prompt=True,
             tokenize=True,
             return_dict=True,
-            return_tensors="pt"
+            return_tensors="pt",
         )
+        inputs = {k: v.to(self.llm_model.device) for k, v in inputs.items()}
         
-        # Stream generation
-        generated_tokens = []
-        max_new_tokens = 256
+        # Create streamer
+        streamer = TextIteratorStreamer(self.llm_tokenizer, skip_prompt=True, skip_special_tokens=True)
         
-        for _ in range(max_new_tokens):
-            with torch.no_grad():
-                outputs = self.llm_model.generate(
-                    **inputs,
-                    max_new_tokens=1,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9,
-                    pad_token_id=self.llm_tokenizer.eos_token_id
-                )
-            
-            # Get new token
-            new_token_id = outputs[0][-1].item()
-            
-            # Check for EOS
-            if new_token_id == self.llm_tokenizer.eos_token_id:
-                break
-            
-            # Decode and yield
-            token_text = self.llm_tokenizer.decode([new_token_id], skip_special_tokens=True)
-            if token_text:
-                yield token_text
-                generated_tokens.append(new_token_id)
-            
-            # Update inputs for next iteration
-            inputs['input_ids'] = outputs
+        # Launch generation in background thread
+        generation_kwargs = dict(
+            **inputs,
+            max_new_tokens=320,
+            do_sample=False,
+            temperature=0.2,
+            top_p=0.9,
+            repetition_penalty=1.2,
+            no_repeat_ngram_size=3,
+            pad_token_id=self.llm_tokenizer.eos_token_id,
+            streamer=streamer,
+        )
+        thread = threading.Thread(target=self.llm_model.generate, kwargs=generation_kwargs)
+        thread.start()
+        
+        # Yield from streamer as tokens arrive
+        for new_text in streamer:
+            if new_text:
+                yield new_text
+        
+        # Ensure thread finished
+        thread.join()
     
     def _generate_with_llm(self, query: str, context: str) -> str:
         """Generate answer using LLM (non-streaming)"""
@@ -637,7 +683,13 @@ Anayasa'dan İlgili Bilgiler:
 
 Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen bilgilere dayanarak cevap ver. Eğer bilgi yetersizse, bunu belirt."""
 
+        system_msg = (
+            "Türkiye Cumhuriyeti Anayasası için sıkı RAG kuralı uygula. Sadece verilen bağlamdan yanıt ver. "
+            "Uydurma yapma, emin değilsen 'Bilmiyorum' de. Yanıtı kısa, net ve Türkçe yaz. "
+            "Sonunda mutlaka kaynak bilgisini ver (ör. 'Kaynak: anayasa.pdf', varsa maddeyi ekle)."
+        )
         messages = [
+            {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt}
         ]
         
@@ -648,16 +700,19 @@ Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen
             tokenize=True,
             return_dict=True,
             return_tensors="pt"
-        ).to(self.llm_model.device)
+        )
+        inputs = {k: v.to(self.llm_model.device) for k, v in inputs.items()}
         
         # Generate with reasonable parameters
         with torch.no_grad():
             outputs = self.llm_model.generate(
                 **inputs,
-                max_new_tokens=200,  # Limit length
-                temperature=0.7,
+                max_new_tokens=320,
+                temperature=0.2,
                 top_p=0.9,
-                do_sample=True,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
+                do_sample=False,
                 pad_token_id=self.llm_tokenizer.eos_token_id
             )
         

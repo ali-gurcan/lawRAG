@@ -131,17 +131,17 @@ class LLMModelFactory(ModelFactory):
                 print(f"      💻 CPU mode - using ultra-safe loading...")
                 
                 if is_llama:
-                    print(f"      🦙 Llama - using ORIGINAL working parameters...")
-                    # ESKİ ÇALIŞAN KOD (log'dan): torch_dtype kullanılıyordu!
+                    print(f"      🦙 Llama - using EXACT old working code...")
+                    # TAM ESKİ ÇALIŞAN KOD (model_factory.py'den):
                     model = AutoModelForCausalLM.from_pretrained(
                         config.name,
                         cache_dir=llm_cache,
-                        torch_dtype=torch.float32,  # ✅ ESKİ KODDA VARDI!
-                        low_cpu_mem_usage=True,     # ✅ ESKİ KODDA VARDI!
-                        device_map='cpu',            # ✅ ESKİ KODDA VARDI!
+                        torch_dtype=getattr(torch, config.dtype),  # ✅ DİNAMİK (ESKİ GİBİ)
+                        low_cpu_mem_usage=True,
+                        device_map=config.device,                  # ✅ CONFİG'DEN (ESKİ GİBİ)
                         **token_kwargs
                     )
-                    print(f"      🎯 Using exact parameters from old working code")
+                    print(f"      🎯 Using EXACT old working parameters")
                 else:
                     # Standard loading for other models
                     model = AutoModelForCausalLM.from_pretrained(
@@ -164,9 +164,8 @@ class LLMModelFactory(ModelFactory):
                     **token_kwargs
                 )
             
-            # Only eval for non-Llama models (Llama crashes on M4)
-            if not is_llama:
-                model.eval()
+            # ESKİ KODDA .eval() HER ZAMAN VARDI!
+            model.eval()
             
             print(f"      ✅ LLM loaded! (Device: {config.device})")
             return tokenizer, model
