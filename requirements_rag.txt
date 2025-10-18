@@ -18,7 +18,7 @@ FlagEmbedding  # For BGE-M3 model
 accelerate==0.24.1
 
 # Vector Database
-faiss-cpu==1.7.4
+faiss-cpu>=1.8.0
 
 # Utilities
 pandas==2.1.3
