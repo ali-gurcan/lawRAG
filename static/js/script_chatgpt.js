@@ -2,6 +2,27 @@
 let isWaitingForResponse = false;
 let messageHistory = [];
 
+// Markdown render function
+function renderMarkdown(text) {
+    if (typeof marked !== 'undefined') {
+        return marked.parse(text);
+    }
+    // Fallback: simple markdown-like formatting
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+        .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+        .replace(/^- (.*$)/gm, '<li>$1</li>')
+        .replace(/^(\d+)\. (.*$)/gm, '<li>$1. $2</li>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/^(.*)$/gm, '<p>$1</p>')
+        .replace(/<p><\/p>/g, '')
+        .replace(/<p>(<h[12]>.*<\/h[12]>)<\/p>/g, '$1')
+        .replace(/<p>(<li>.*<\/li>)<\/p>/g, '<ul>$1</ul>')
+        .replace(/<\/li><li>/g, '</li><li>');
+}
+
 // DOM Elements
 const welcomeScreen = document.getElementById('welcomeScreen');
 const messagesContainer = document.getElementById('messagesContainer');
@@ -300,7 +321,8 @@ function updateStreamingMetadata(container, metadata) {
 // Update streaming content
 function updateStreamingContent(container, text) {
     const contentDiv = container._contentDiv;
-    contentDiv.innerHTML = text + '<span class="cursor-blink">|</span>';
+    // Render markdown for streaming content
+    contentDiv.innerHTML = renderMarkdown(text) + '<span class="cursor-blink">|</span>';
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
@@ -309,8 +331,8 @@ function finalizeStreamingMessage(container, text, metadata) {
     const contentDiv = container._contentDiv;
     const streamBadge = container._streamBadge;
     
-    // Remove cursor and update badge
-    contentDiv.innerHTML = text;
+    // Final markdown render and remove cursor
+    contentDiv.innerHTML = renderMarkdown(text);
     streamBadge.remove();
     
     // Add sources if available
@@ -371,10 +393,17 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
     headerDiv.appendChild(avatar);
     headerDiv.appendChild(name);
     
-    // Content
+    // Content with markdown rendering
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.textContent = content;
+    
+    if (role === 'bot') {
+        // Render markdown for bot messages
+        contentDiv.innerHTML = renderMarkdown(content);
+    } else {
+        // Plain text for user messages
+        contentDiv.textContent = content;
+    }
     
     messageDiv.appendChild(headerDiv);
     messageDiv.appendChild(contentDiv);

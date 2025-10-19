@@ -489,8 +489,8 @@ class RAGEngine:
         
         avg_confidence = total_confidence / len(results)
         
-        # Combine more top contexts for better answer coverage
-        combined_context = "\n\n".join(contexts[:4])  # Top 4 chunks
+        # Use only top 2 chunks for more focused, higher quality answers
+        combined_context = "\n\n".join(contexts[:2])  # Top 2 chunks for better quality
         
         # Determine if we should use LLM
         if use_llm is None:
@@ -617,19 +617,9 @@ class RAGEngine:
         from transformers import TextIteratorStreamer
         import threading
         
-        # Build prompt
-        prompt = (
-            "Türkiye Cumhuriyeti Anayasası hakkında sorulan soruya, verilen bilgilere dayanarak kısa ve net bir cevap ver.\n\n"
-            f"Soru: {query}\n\n"
-            "Anayasa'dan İlgili Bilgiler:\n"
-            f"{context}\n\n"
-            "Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen bilgilere dayanarak cevap ver. Eğer bilgi yetersizse, bunu belirt."
-        )
-        system_msg = (
-            "Türkiye Cumhuriyeti Anayasası için sıkı RAG kuralı uygula. Sadece verilen bağlamdan yanıt ver. "
-            "Uydurma yapma, emin değilsen 'Bilmiyorum' de. Yanıtı kısa, net ve Türkçe yaz. "
-            "Sonunda mutlaka kaynak bilgisini ver (ör. 'Kaynak: anayasa.pdf', varsa maddeyi ekle)."
-        )
+        # Build ultra-fast prompt for streaming
+        prompt = f"S: {query}\nB: {context}\nC:"
+        system_msg = "Kısa cevap ver."
         messages = [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt}
@@ -651,12 +641,13 @@ class RAGEngine:
         # Launch generation in background thread
         generation_kwargs = dict(
             **inputs,
-            max_new_tokens=320,
-            do_sample=False,
-            temperature=0.2,
-            top_p=0.9,
-            repetition_penalty=1.2,
-            no_repeat_ngram_size=3,
+            max_new_tokens=80,   # Çok kısa, ultra hızlı cevaplar
+            do_sample=True,      # Hızlı sampling
+            temperature=0.1,     # Çok düşük, hızlı
+            top_p=0.95,          # Hızlı seçim
+            top_k=20,            # Daha az seçenek (hızlı)
+            repetition_penalty=1.05,  # Minimal tekrar kontrolü
+            no_repeat_ngram_size=2,   # Minimal n-gram kontrolü
             pad_token_id=self.llm_tokenizer.eos_token_id,
             streamer=streamer,
         )
@@ -674,20 +665,11 @@ class RAGEngine:
     def _generate_with_llm(self, query: str, context: str) -> str:
         """Generate answer using LLM (non-streaming)"""
         # Create prompt for Turkish legal Q&A
-        prompt = f"""Türkiye Cumhuriyeti Anayasası hakkında sorulan soruya, verilen bilgilere dayanarak kısa ve net bir cevap ver.
+        prompt = f"""S: {query}
+B: {context}
+C:"""
 
-Soru: {query}
-
-Anayasa'dan İlgili Bilgiler:
-{context}
-
-Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen bilgilere dayanarak cevap ver. Eğer bilgi yetersizse, bunu belirt."""
-
-        system_msg = (
-            "Türkiye Cumhuriyeti Anayasası için sıkı RAG kuralı uygula. Sadece verilen bağlamdan yanıt ver. "
-            "Uydurma yapma, emin değilsen 'Bilmiyorum' de. Yanıtı kısa, net ve Türkçe yaz. "
-            "Sonunda mutlaka kaynak bilgisini ver (ör. 'Kaynak: anayasa.pdf', varsa maddeyi ekle)."
-        )
+        system_msg = "Kısa cevap ver."
         messages = [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt}
@@ -703,16 +685,17 @@ Lütfen soruya doğrudan, kısa ve açık bir şekilde cevap ver. Sadece verilen
         )
         inputs = {k: v.to(self.llm_model.device) for k, v in inputs.items()}
         
-        # Generate with reasonable parameters
+        # Generate with speed-optimized parameters
         with torch.no_grad():
             outputs = self.llm_model.generate(
                 **inputs,
-                max_new_tokens=320,
-                temperature=0.2,
-                top_p=0.9,
-                repetition_penalty=1.2,
-                no_repeat_ngram_size=3,
-                do_sample=False,
+                max_new_tokens=80,   # Çok kısa, ultra hızlı cevaplar
+                do_sample=True,      # Hızlı sampling
+                temperature=0.1,     # Çok düşük, hızlı
+                top_p=0.95,          # Hızlı seçim
+                top_k=20,            # Daha az seçenek (hızlı)
+                repetition_penalty=1.05,  # Minimal tekrar kontrolü
+                no_repeat_ngram_size=2,   # Minimal n-gram kontrolü
                 pad_token_id=self.llm_tokenizer.eos_token_id
             )
         

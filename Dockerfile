@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     build-essential \
+    zlib1g-dev \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Çalışma dizinini ayarla

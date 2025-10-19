@@ -4,12 +4,12 @@
 # Active Models (choose from catalog)
 active_models:
   embedding: e5-large    # Options: e5-large, mpnet, minilm
-  llm: llama-8b          # Llama-3.1-8B-Instruct (requires HF_TOKEN)
+  llm: llama-8b          # Llama-3.1-8B-Instruct (high quality, optimized for speed)
   reranker: ms-marco
 
 # Retrieval Configuration
 retrieval:
-  top_k: 3
+  top_k: 2
   use_hybrid_search: true
   use_reranking: true
   use_query_expansion: true
