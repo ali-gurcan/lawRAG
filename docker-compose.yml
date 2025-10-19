@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  rag-chatbot:
+    build: .
+    container_name: law-rag-chatbot
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./cache:/app/cache
+      - ./data:/app/data
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - MKL_SERVICE_FORCE_INTEL=1
+      - HF_TOKEN=${HF_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
