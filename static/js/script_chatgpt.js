@@ -1,3 +1,14 @@
+// Minimal inline SVG icon set (stroke-based, currentColor)
+const Icons = {
+  user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  scales: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M3 7h18"/><path d="M7 7L3 14a4 4 0 0 0 8 0L7 7z"/><path d="M17 7l-4 7a4 4 0 0 0 8 0l-4-7z"/></svg>',
+  book: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v15.5A2.5 2.5 0 0 0 6.5 22H20V6a2 2 0 0 0-2-2H6"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  alert: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  chip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8"/></svg>'
+};
+
 // State
 let isWaitingForResponse = false;
 let messageHistory = [];
@@ -286,7 +297,7 @@ function createStreamingMessage() {
     
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar bot-avatar';
-    avatar.textContent = '⚖️';
+    avatar.innerHTML = Icons.scales;
     
     const name = document.createElement('div');
     name.className = 'message-name';
@@ -337,14 +348,14 @@ function updateStreamingMetadata(container, metadata) {
     if (metadata.confidence !== undefined) {
         const confClass = metadata.confidence >= 70 ? 'high' : metadata.confidence >= 50 ? 'medium' : 'low';
         html += `<div class="confidence-badge confidence-${confClass}">
-            <span class="confidence-icon">${metadata.confidence >= 70 ? '✅' : metadata.confidence >= 50 ? '⚠️' : '❌'}</span>
+            <span class="confidence-icon">${metadata.confidence >= 70 ? Icons.check : metadata.confidence >= 50 ? Icons.alert : Icons.x}</span>
             <span class="confidence-text">Güven: ${Math.round(metadata.confidence)}%</span>
         </div>`;
         
         // Low confidence warning
         if (metadata.low_confidence) {
             html += `<div class="low-confidence-warning">
-                ⚠️ Düşük güven skoru. Daha spesifik soru deneyebilirsiniz.
+                <span class="confidence-icon">${Icons.alert}</span> Düşük güven skoru. Daha spesifik soru deneyebilirsiniz.
             </div>`;
         }
     }
@@ -374,7 +385,7 @@ function finalizeStreamingMessage(container, text, metadata) {
         const sourcesDiv = document.createElement('div');
         sourcesDiv.className = 'message-sources';
         
-        let sourcesHTML = '<div class="sources-header">📚 Kaynaklar:</div>';
+        let sourcesHTML = `<div class="sources-header">${Icons.book} Kaynaklar:</div>`;
         metadata.sources.forEach((source, idx) => {
             const scorePercent = Math.round(source.score * 100);
             const scoreClass = scorePercent >= 70 ? 'high' : scorePercent >= 50 ? 'medium' : 'low';
@@ -409,7 +420,7 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
     
     const avatar = document.createElement('div');
     avatar.className = `message-avatar ${role}-avatar`;
-    avatar.textContent = role === 'user' ? '👤' : '⚖️';
+    avatar.innerHTML = role === 'user' ? Icons.user : Icons.scales;
     
     const name = document.createElement('div');
     name.className = 'message-name';
@@ -419,7 +430,7 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
     if (role === 'bot' && generated) {
         const llmBadge = document.createElement('span');
         llmBadge.className = 'llm-badge';
-        llmBadge.innerHTML = '🦙 Llama-3.2';
+        llmBadge.innerHTML = `${Icons.chip} Llama-3.2`;
         llmBadge.title = 'Llama 3.2-1B-Instruct ile üretildi';
         name.appendChild(llmBadge);
     }
@@ -449,7 +460,7 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
         
         const confClass = confidence >= 70 ? 'high' : confidence >= 50 ? 'medium' : 'low';
         let confHTML = `<div class="confidence-badge confidence-${confClass}">
-            <span class="confidence-icon">${confidence >= 70 ? '✅' : confidence >= 50 ? '⚠️' : '❌'}</span>
+            <span class="confidence-icon">${confidence >= 70 ? Icons.check : confidence >= 50 ? Icons.alert : Icons.x}</span>
             <span class="confidence-text">Güven: ${Math.round(confidence)}%</span>
         </div>`;
         
@@ -468,7 +479,7 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
         
         sourcesDiv.innerHTML = `
             <div class="sources-title">
-                📚 ${sources.length} Kaynak Bulundu
+                ${Icons.book} ${sources.length} Kaynak Bulundu
             </div>
             ${sources.slice(0, 3).map((source, idx) => `
                 <div class="source-item">
@@ -501,10 +512,10 @@ function addMessage(content, role, sources = [], confidence = null, hasSources =
             badge.textContent = `✓ Güven: ${(confidence * 100).toFixed(0)}%`;
         } else if (confidence >= 0.5) {
             badge.className += ' confidence-medium';
-            badge.textContent = `⚠ Orta Güven: ${(confidence * 100).toFixed(0)}%`;
+            badge.innerHTML = `${Icons.alert} Orta Güven: ${(confidence * 100).toFixed(0)}%`;
         } else {
             badge.className += ' confidence-low';
-            badge.textContent = `⚠ Düşük Güven: ${(confidence * 100).toFixed(0)}%`;
+            badge.innerHTML = `${Icons.alert} Düşük Güven: ${(confidence * 100).toFixed(0)}%`;
         }
         
         contentDiv.appendChild(badge);
@@ -523,7 +534,7 @@ function showTypingIndicator() {
     
     typingDiv.innerHTML = `
         <div class="message-header">
-            <div class="message-avatar bot-avatar">⚖️</div>
+            <div class="message-avatar bot-avatar">${Icons.scales}</div>
             <div class="message-name">Hukuki AI</div>
         </div>
         <div class="typing-indicator">
