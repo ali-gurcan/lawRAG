@@ -108,6 +108,69 @@ class LLMModelFactory(ModelFactory):
             )
         
         try:
+            # Optional alternate backend: Ollama HTTP API
+            backend = os.getenv('LLM_BACKEND', 'transformers').lower().strip()
+            if backend in ('ollama',):
+                print("      🦙 Backend: Ollama (HTTP API)")
+                base_url = os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')
+                model_name = os.getenv('OLLAMA_MODEL') or 'llama3.1:8b-instruct'
+                try:
+                    import requests  # lightweight HTTP client
+                except Exception as ie:
+                    raise ImportError("requests paketi gerekli. Kur: pip install requests") from ie
+
+                class OllamaClient:
+                    def __init__(self, base_url: str, model: str):
+                        self.base_url = base_url.rstrip('/')
+                        self.model = model
+                        self.is_ollama = True
+                    def chat(self, messages, stream=False, options=None):
+                        payload = {
+                            'model': self.model,
+                            'messages': messages,
+                            'stream': bool(stream),
+                        }
+                        if options:
+                            payload['options'] = options
+                        url = f"{self.base_url}/api/chat"
+                        resp = requests.post(url, json=payload, timeout=120, stream=stream)
+                        resp.raise_for_status()
+                        return resp
+
+                client = OllamaClient(base_url, model_name)
+                print(f"      🔗 Ollama URL: {base_url}")
+                print(f"      📦 Model: {model_name}")
+                return None, client
+
+            # Optional alternate backend: llama.cpp (GGUF, true Q4_K_M)
+            if backend in ('llama_cpp', 'llamacpp', 'llama-cpp'):
+                print("      🦙 Backend: llama.cpp (GGUF)")
+                gguf_path = os.getenv('LLM_GGUF_PATH')
+                if not gguf_path or not os.path.exists(gguf_path):
+                    raise ValueError("LLM_BACKEND=llama_cpp seçildi ancak LLM_GGUF_PATH bulunamadı veya dosya yok.")
+                try:
+                    from llama_cpp import Llama
+                except Exception as ie:
+                    raise ImportError("llama-cpp-python yüklü değil. Kur: pip install llama-cpp-python==0.2.*") from ie
+
+                # Build llama.cpp model (CPU by default). Q4_K_M dosyasını kullanın.
+                n_threads = max(1, os.cpu_count() or 1)
+                ctx = int(os.getenv('LLM_CTX', '4096'))
+                print(f"      📦 GGUF: {gguf_path}")
+                print(f"      ⚙️  ctx={ctx}, threads={n_threads}")
+                llm = Llama(
+                    model_path=gguf_path,
+                    n_ctx=ctx,
+                    n_threads=n_threads,
+                    logits_all=False,
+                    verbose=False,
+                )
+                # Mark for engine logic
+                setattr(llm, 'is_llama_cpp', True)
+                print("      ✅ Llama.cpp GGUF model yüklendi")
+                # Tokenizer yok; üst katman özel yol kullanacak
+                return None, llm
+
             llm_cache = os.path.join(cache_dir, 'llm_model')
             os.makedirs(llm_cache, exist_ok=True)
             
@@ -126,6 +189,13 @@ class LLMModelFactory(ModelFactory):
             
             # Check if this is a Llama model (requires special handling)
             is_llama = 'llama' in config.name.lower()
+
+            # Quantization preferences (transformers/bitsandbytes)
+            # Note: Q4_K_M is a llama.cpp (GGUF) scheme; in transformers we approximate with 4-bit NF4
+            quant_env = os.getenv('LLM_QUANT', '').lower().strip()
+            use_4bit = quant_env in ('q4_k_m', '4bit', 'nf4')
+            if use_4bit:
+                print("      🧮 Quantization: 4-bit (NF4, transformers path)")
             
             if config.device == 'cpu':
                 print(f"      💻 CPU mode - using ultra-safe loading...")
@@ -133,35 +203,79 @@ class LLMModelFactory(ModelFactory):
                 if is_llama:
                     print(f"      🦙 Llama - using EXACT old working code...")
                     # TAM ESKİ ÇALIŞAN KOD (model_factory.py'den):
+                    model_kwargs = dict(
+                        cache_dir=llm_cache,
+                        low_cpu_mem_usage=True,
+                        **token_kwargs
+                    )
+                    if use_4bit:
+                        # bitsandbytes 4-bit NF4
+                        model_kwargs.update({
+                            'load_in_4bit': True,
+                            'bnb_4bit_quant_type': 'nf4',
+                            'bnb_4bit_compute_dtype': torch.bfloat16,
+                            'bnb_4bit_use_double_quant': True,
+                            'device_map': 'auto',
+                        })
+                    else:
+                        model_kwargs.update({
+                            'torch_dtype': getattr(torch, config.dtype),
+                            'device_map': config.device,
+                        })
                     model = AutoModelForCausalLM.from_pretrained(
                         config.name,
-                        cache_dir=llm_cache,
-                        torch_dtype=getattr(torch, config.dtype),  # ✅ DİNAMİK (ESKİ GİBİ)
-                        low_cpu_mem_usage=True,
-                        device_map=config.device,                  # ✅ CONFİG'DEN (ESKİ GİBİ)
-                        **token_kwargs
+                        **model_kwargs
                     )
                     print(f"      🎯 Using EXACT old working parameters")
                 else:
                     # Standard loading for other models
-                    model = AutoModelForCausalLM.from_pretrained(
-                        config.name,
+                    model_kwargs = dict(
                         cache_dir=llm_cache,
-                        torch_dtype=torch.float32,
                         low_cpu_mem_usage=True,
                         **token_kwargs
                     )
+                    if use_4bit:
+                        model_kwargs.update({
+                            'load_in_4bit': True,
+                            'bnb_4bit_quant_type': 'nf4',
+                            'bnb_4bit_compute_dtype': torch.bfloat16,
+                            'bnb_4bit_use_double_quant': True,
+                            'device_map': 'auto',
+                        })
+                    else:
+                        model_kwargs.update({
+                            'torch_dtype': torch.float32,
+                        })
+                    model = AutoModelForCausalLM.from_pretrained(
+                        config.name,
+                        **model_kwargs
+                    )
                     # Move to CPU explicitly
-                    model = model.to('cpu')
+                    if not use_4bit:
+                        model = model.to('cpu')
             else:
                 # GPU mode
                 dtype = getattr(torch, config.dtype) if hasattr(torch, config.dtype) else torch.float32
+                model_kwargs = dict(
+                    cache_dir=llm_cache,
+                    **token_kwargs
+                )
+                if use_4bit:
+                    model_kwargs.update({
+                        'load_in_4bit': True,
+                        'bnb_4bit_quant_type': 'nf4',
+                        'bnb_4bit_compute_dtype': torch.bfloat16,
+                        'bnb_4bit_use_double_quant': True,
+                        'device_map': 'auto',
+                    })
+                else:
+                    model_kwargs.update({
+                        'torch_dtype': dtype,
+                        'device_map': config.device,
+                    })
                 model = AutoModelForCausalLM.from_pretrained(
                     config.name,
-                    cache_dir=llm_cache,
-                    torch_dtype=dtype,
-                    device_map=config.device,
-                    **token_kwargs
+                    **model_kwargs
                 )
             
             # ESKİ KODDA .eval() HER ZAMAN VARDI!

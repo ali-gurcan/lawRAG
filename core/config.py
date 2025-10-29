@@ -135,63 +135,21 @@ class RAGConfig:
     
     def _use_defaults(self):
         """Use default configuration"""
-        # Embedding models catalog
+        # Embedding models catalog (only BGE-M3 kept)
         self.embedding_models = {
-            'e5-large': EmbeddingModelConfig(
-                name='intfloat/multilingual-e5-large',
-                display_name='E5-Large',
+            'bge-m3': EmbeddingModelConfig(
+                name='BAAI/bge-m3',
+                display_name='BGE-M3',
                 size_gb=2.0,
-                quality_score=9.5,
+                quality_score=9.6,
                 dimension=1024,
-                batch_size=32,
-                max_length=512
-            ),
-            'mpnet': EmbeddingModelConfig(
-                name='sentence-transformers/paraphrase-multilingual-mpnet-base-v2',
-                display_name='MPNet-Multi',
-                size_gb=1.0,
-                quality_score=9.0,
-                dimension=768,
-                batch_size=64,
-                max_length=384
-            ),
-            'minilm': EmbeddingModelConfig(
-                name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
-                display_name='MiniLM-L12',
-                size_gb=0.5,
-                quality_score=8.0,
-                dimension=384,
-                batch_size=128,
-                max_length=256
+                batch_size=16,
+                max_length=8192
             )
         }
         
-        # LLM models catalog
+        # LLM models catalog (only Llama-3.1-8B kept)
         self.llm_models = {
-            'llama-1b': LLMModelConfig(
-                name='meta-llama/Llama-3.2-1B-Instruct',
-                display_name='Llama-3.2-1B',
-                size_gb=2.0,
-                quality_score=7.5,
-                requires_token=True,
-                device='cpu',
-                dtype='float32',  # Safer for CPU
-                max_new_tokens=512,
-                temperature=0.3,
-                top_p=0.9,
-                repetition_penalty=1.1
-            ),
-            'llama-3b': LLMModelConfig(
-                name='meta-llama/Llama-3.2-3B-Instruct',
-                display_name='Llama-3.2-3B',
-                size_gb=4.0,
-                quality_score=8.5,
-                requires_token=True,
-                max_new_tokens=512,
-                temperature=0.3,
-                top_p=0.9,
-                repetition_penalty=1.1
-            ),
             'llama-8b': LLMModelConfig(
                 name='meta-llama/Llama-3.1-8B-Instruct',
                 display_name='Llama-3.1-8B',
@@ -200,28 +158,6 @@ class RAGConfig:
                 requires_token=True,
                 device='cpu',
                 dtype='float32',
-                max_new_tokens=512,
-                temperature=0.3,
-                top_p=0.9,
-                repetition_penalty=1.1
-            ),
-            'qwen-1.5b': LLMModelConfig(
-                name='Qwen/Qwen2.5-1.5B-Instruct',
-                display_name='Qwen-1.5B',
-                size_gb=2.0,
-                quality_score=7.0,
-                requires_token=False,
-                max_new_tokens=512,
-                temperature=0.3,
-                top_p=0.9,
-                repetition_penalty=1.1
-            ),
-            'gemma-2b': LLMModelConfig(
-                name='google/gemma-2-2b-it',
-                display_name='Gemma-2-2B',
-                size_gb=2.5,
-                quality_score=7.0,
-                requires_token=False,
                 max_new_tokens=512,
                 temperature=0.3,
                 top_p=0.9,
@@ -240,7 +176,7 @@ class RAGConfig:
         }
         
         # Active models (selected from catalog)
-        self.active_embedding_model = 'e5-large'
+        self.active_embedding_model = 'bge-m3'
         self.active_llm_model = 'llama-8b'
         self.active_reranker_model = 'ms-marco'
         

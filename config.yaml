@@ -3,7 +3,7 @@
 
 # Active Models (choose from catalog)
 active_models:
-  embedding: e5-large    # Options: e5-large, mpnet, minilm
+  embedding: bge-m3      # Options: bge-m3, e5-large, mpnet, minilm
   llm: llama-8b          # Llama-3.1-8B-Instruct (high quality, optimized for speed)
   reranker: ms-marco
 
