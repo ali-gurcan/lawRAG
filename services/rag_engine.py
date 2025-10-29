@@ -14,6 +14,7 @@ import torch
 import json
 from rank_bm25 import BM25Okapi
 import re
+import time
 
 # Import OOP components
 from core.config import RAGConfig
@@ -52,6 +53,7 @@ class RAGEngine:
         self.index_cache = os.path.join(self.cache_dir, config.cache.index_file)
         self.embeddings_cache = os.path.join(self.cache_dir, config.cache.embeddings_file)
         self.bm25_cache = os.path.join(self.cache_dir, config.cache.bm25_file)
+        self.metadata_cache = os.path.join(self.cache_dir, 'cache_metadata.pkl')
         
         # Initialize
         self.model = None
@@ -124,14 +126,73 @@ class RAGEngine:
             print(f"      ❌ LLM yüklenemedi: {str(e)}")
             raise
 
-    def load_cache(self) -> bool:
+    def _get_pdf_signature(self, pdf_paths: List[str]) -> Dict:
+        """
+        Generate signature for PDF files (hash + mtime) for cache invalidation
+        """
+        signature = {}
+        for pdf_path in pdf_paths:
+            if os.path.exists(pdf_path):
+                # Get modification time
+                mtime = os.path.getmtime(pdf_path)
+                # Get file size as hash component
+                size = os.path.getsize(pdf_path)
+                # Simple signature: filename + mtime + size
+                sig_key = os.path.basename(pdf_path)
+                signature[sig_key] = {
+                    'mtime': mtime,
+                    'size': size,
+                    'path': pdf_path
+                }
+        return signature
+    
+    def _is_cache_valid(self, pdf_paths: List[str]) -> bool:
+        """
+        Check if cache is valid by comparing PDF signatures
+        """
+        if not os.path.exists(self.metadata_cache):
+            return False
+        
+        try:
+            with open(self.metadata_cache, 'rb') as f:
+                cached_metadata = pickle.load(f)
+            
+            current_signature = self._get_pdf_signature(pdf_paths)
+            
+            # Check if same files with same signatures
+            cached_files = set(cached_metadata.get('pdf_signature', {}).keys())
+            current_files = set(current_signature.keys())
+            
+            if cached_files != current_files:
+                print("   ⚠️  PDF list changed, cache invalidated")
+                return False
+            
+            # Check if any file was modified
+            for filename, sig in current_signature.items():
+                cached_sig = cached_metadata.get('pdf_signature', {}).get(filename)
+                if not cached_sig:
+                    return False
+                if sig['mtime'] != cached_sig.get('mtime') or sig['size'] != cached_sig.get('size'):
+                    print(f"   ⚠️  {filename} was modified, cache invalidated")
+                    return False
+            
+            return True
+        except Exception as e:
+            print(f"   ⚠️  Cache metadata check failed: {str(e)}")
+            return False
+    
+    def load_cache(self, pdf_paths: Optional[List[str]] = None) -> bool:
         """
         Load cached data (chunks, embeddings, index, BM25)
         Returns True if cache loaded successfully, False otherwise
         """
         try:
-            # Check if all cache files exist
-            cache_files = [self.chunks_cache, self.embeddings_cache, self.index_cache]
+            # Validate cache against PDF files if provided
+            if pdf_paths and not self._is_cache_valid(pdf_paths):
+                return False
+            
+            # Check if all required cache files exist
+            cache_files = [self.chunks_cache, self.index_cache]
             if self.use_hybrid_search:
                 cache_files.append(self.bm25_cache)
             
@@ -146,10 +207,7 @@ class RAGEngine:
                 self.chunks = pickle.load(f)
             print(f"      ✅ Chunks loaded: {len(self.chunks)} chunks")
             
-            # Load embeddings and index
-            with open(self.embeddings_cache, 'rb') as f:
-                embeddings = pickle.load(f)
-            
+            # Load index (embeddings are stored in FAISS index)
             self.index = faiss.read_index(self.index_cache)
             self.dimension = self.index.d
             print(f"      ✅ FAISS index loaded: {self.index.ntotal} vectors")
@@ -176,7 +234,7 @@ class RAGEngine:
             force_refresh: Force reprocessing even if cache exists
         """
         # Try to load from cache
-        if not force_refresh and self.load_cache():
+        if not force_refresh and self.load_cache(pdf_paths):
             print("      ✅ Cache kullanılıyor (hızlı başlatma)")
             return
         
@@ -391,6 +449,17 @@ class RAGEngine:
         if self.use_hybrid_search and self.bm25:
             with open(self.bm25_cache, 'wb') as f:
                 pickle.dump(self.bm25, f)
+        
+        # Save cache metadata (PDF signatures for invalidation)
+        pdf_signature = self._get_pdf_signature(pdf_paths)
+        cache_metadata = {
+            'pdf_signature': pdf_signature,
+            'created_at': time.time(),
+            'num_chunks': len(self.chunks),
+            'index_size': self.index.ntotal
+        }
+        with open(self.metadata_cache, 'wb') as f:
+            pickle.dump(cache_metadata, f)
         
         cache_size = (os.path.getsize(self.chunks_cache) + os.path.getsize(self.index_cache)) / (1024*1024)
         print(f"      ✅ Cache kaydedildi (~{cache_size:.1f} MB)")
