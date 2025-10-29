@@ -98,6 +98,15 @@ class StreamingConfig:
     buffer_size: int = 5
 
 
+@dataclass
+class LLMGenerationConfig:
+    """LLM generation configuration"""
+    max_tokens: int = 50
+    context_limit: int = 500  # Max characters sent to LLM
+    length_budget: int = 2000  # Max characters for combined context
+    max_answer_words: int = 50  # Max words in answer (prompt guidance)
+
+
 class RAGConfig:
     """
     Main RAG configuration with singleton pattern
@@ -187,6 +196,7 @@ class RAGConfig:
         self.server = ServerConfig()
         self.confidence = ConfidenceConfig()
         self.streaming = StreamingConfig()
+        self.llm_generation = LLMGenerationConfig()
         
         # Environment
         self.hf_token = os.getenv('HF_TOKEN')
@@ -217,7 +227,7 @@ class RAGConfig:
                     setattr(self.retrieval, key, value)
         
         # Override other configs similarly
-        for config_name in ['chunking', 'cache', 'server', 'confidence', 'streaming']:
+        for config_name in ['chunking', 'cache', 'server', 'confidence', 'streaming', 'llm_generation']:
             if config_name in config_data:
                 config_obj = getattr(self, config_name)
                 for key, value in config_data[config_name].items():

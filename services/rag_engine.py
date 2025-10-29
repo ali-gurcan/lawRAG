@@ -757,8 +757,8 @@ class RAGEngine:
         else:
             selected_n = n_candidates
         
-        # Length budget (characters)
-        length_budget = 2000
+        # Length budget from config (not hard-coded)
+        length_budget = self.config.llm_generation.length_budget
         combined_context = ""
         for i in range(selected_n):
             piece = contexts[i]
@@ -887,7 +887,7 @@ class RAGEngine:
             selected_n = 2
         else:
             selected_n = n_candidates
-        length_budget = 2000
+        length_budget = self.config.llm_generation.length_budget
         combined_context = ""
         for i in range(selected_n):
             piece = contexts_all[i]
@@ -929,11 +929,14 @@ class RAGEngine:
         """Stream tokens from LLM (transformers or llama.cpp)."""
         # Ollama streaming path
         if hasattr(self.llm_model, 'is_ollama') and self.llm_model.is_ollama:
-            sys = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
-            context_snippet = context[:500] if len(context) > 500 else context
+            context_limit = self.config.llm_generation.context_limit
+            max_tokens = self.config.llm_generation.max_tokens
+            max_words = self.config.llm_generation.max_answer_words
+            context_snippet = context[:context_limit] if len(context) > context_limit else context
+            sys = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
             messages = [
                 {"role": "system", "content": sys},
-                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece kısa cevap, madde metnini tekrarlama):"}
+                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece sorunun cevabı, madde metnini tekrarlama):"}
             ]
             try:
                 # Stream JSON lines
@@ -941,7 +944,7 @@ class RAGEngine:
                     'temperature': 0.1,
                     'top_p': 0.95,
                     'num_ctx': 4096,
-                    'num_predict': 50,  # Reduced from 80
+                    'num_predict': max_tokens,
                 })
                 for line in resp.iter_lines(decode_unicode=True):
                     if not line:
@@ -961,11 +964,14 @@ class RAGEngine:
 
         # llama.cpp streaming path
         if hasattr(self.llm_model, 'is_llama_cpp') and self.llm_model.is_llama_cpp:
-            sys = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
-            context_snippet = context[:500] if len(context) > 500 else context
+            context_limit = self.config.llm_generation.context_limit
+            max_tokens = self.config.llm_generation.max_tokens
+            max_words = self.config.llm_generation.max_answer_words
+            context_snippet = context[:context_limit] if len(context) > context_limit else context
+            sys = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
             messages = [
                 {"role": "system", "content": sys},
-                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece kısa cevap, madde metnini tekrarlama):"}
+                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece sorunun cevabı, madde metnini tekrarlama):"}
             ]
             try:
                 # Use chat-completion style if available
@@ -973,7 +979,7 @@ class RAGEngine:
                     messages=messages,
                     stream=True,
                     temperature=0.1,
-                    max_tokens=50,  # Reduced from 80
+                    max_tokens=max_tokens,
                     top_p=0.95,
                 ):
                     delta = chunk["choices"][0]["delta"].get("content", "") if "delta" in chunk["choices"][0] else chunk["choices"][0]["text"]
@@ -987,9 +993,12 @@ class RAGEngine:
         # transformers streaming path (default)
         from transformers import TextIteratorStreamer
         import threading
-        context_snippet = context[:500] if len(context) > 500 else context
-        prompt = f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece kısa cevap, madde metnini tekrarlama):"
-        system_msg = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
+        context_limit = self.config.llm_generation.context_limit
+        max_tokens = self.config.llm_generation.max_tokens
+        max_words = self.config.llm_generation.max_answer_words
+        context_snippet = context[:context_limit] if len(context) > context_limit else context
+        prompt = f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece sorunun cevabı, madde metnini tekrarlama):"
+        system_msg = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
         messages = [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt}
@@ -1005,7 +1014,7 @@ class RAGEngine:
         streamer = TextIteratorStreamer(self.llm_tokenizer, skip_prompt=True, skip_special_tokens=True)
         generation_kwargs = dict(
             **inputs,
-            max_new_tokens=50,  # Reduced from 80
+            max_new_tokens=max_tokens,
             do_sample=True,
             temperature=0.1,
             top_p=0.95,
@@ -1026,19 +1035,23 @@ class RAGEngine:
         """Generate answer using LLM (llama.cpp or transformers)."""
         # Ollama synchronous path
         if hasattr(self.llm_model, 'is_ollama') and self.llm_model.is_ollama:
-            sys = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
-            # Extract relevant snippet from context (first sentence or key phrase)
-            context_snippet = context[:500] if len(context) > 500 else context
+            # Dynamic limits from config
+            context_limit = self.config.llm_generation.context_limit
+            max_tokens = self.config.llm_generation.max_tokens
+            max_words = self.config.llm_generation.max_answer_words
+            context_snippet = context[:context_limit] if len(context) > context_limit else context
+            
+            sys = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
             messages = [
                 {"role": "system", "content": sys},
-                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece kısa cevap, madde metnini tekrarlama):"}
+                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece sorunun cevabı, madde metnini tekrarlama):"}
             ]
             try:
                 resp = self.llm_model.chat(messages, stream=False, options={
                     'temperature': 0.1,
                     'top_p': 0.95,
                     'num_ctx': 4096,
-                    'num_predict': 50,  # Reduced from 80
+                    'num_predict': max_tokens,
                 })
                 data = resp.json()
                 # Newer Ollama returns {'message': {'content': ...}}
@@ -1054,17 +1067,20 @@ class RAGEngine:
 
         # llama.cpp synchronous path
         if hasattr(self.llm_model, 'is_llama_cpp') and self.llm_model.is_llama_cpp:
-            sys = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
-            context_snippet = context[:500] if len(context) > 500 else context
+            context_limit = self.config.llm_generation.context_limit
+            max_tokens = self.config.llm_generation.max_tokens
+            max_words = self.config.llm_generation.max_answer_words
+            context_snippet = context[:context_limit] if len(context) > context_limit else context
+            sys = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
             messages = [
                 {"role": "system", "content": sys},
-                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece kısa cevap, madde metnini tekrarlama):"}
+                {"role": "user", "content": f"Soru: {query}\n\nBağlam: {context_snippet}\n\nCevap (sadece sorunun cevabı, madde metnini tekrarlama):"}
             ]
             try:
                 out = self.llm_model.create_chat_completion(
                     messages=messages,
                     temperature=0.1,
-                    max_tokens=50,  # Reduced from 80
+                    max_tokens=max_tokens,
                     top_p=0.95,
                 )
                 return out["choices"][0]["message"]["content"].strip()
@@ -1073,13 +1089,16 @@ class RAGEngine:
                 return context[:300]
 
         # transformers path
-        context_snippet = context[:500] if len(context) > 500 else context
+        context_limit = self.config.llm_generation.context_limit
+        max_tokens = self.config.llm_generation.max_tokens
+        max_words = self.config.llm_generation.max_answer_words
+        context_snippet = context[:context_limit] if len(context) > context_limit else context
         prompt = f"""Soru: {query}
 
 Bağlam: {context_snippet}
 
-Cevap (sadece kısa cevap, madde metnini tekrarlama):"""
-        system_msg = "Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini tekrarlama, sadece soruya cevap ver."
+Cevap (sadece sorunun cevabı, madde metnini tekrarlama):"""
+        system_msg = f"Sen bir hukuki asistanısın. Soruya sadece kısa, özlü cevap ver. Madde metnini veya uzun açıklamaları tekrarlama. Sadece sorunun cevabını ver (1-2 cümle, maksimum {max_words} kelime)."
         messages = [
             {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt}
@@ -1095,7 +1114,7 @@ Cevap (sadece kısa cevap, madde metnini tekrarlama):"""
         with torch.no_grad():
             outputs = self.llm_model.generate(
                 **inputs,
-                max_new_tokens=50,  # Reduced from 80
+                max_new_tokens=max_tokens,
                 do_sample=True,
                 temperature=0.1,
                 top_p=0.95,

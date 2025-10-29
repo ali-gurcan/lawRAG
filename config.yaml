@@ -54,3 +54,10 @@ streaming:
   chunk_size: 1
   buffer_size: 5
 
+# LLM Generation Configuration
+llm_generation:
+  max_tokens: 50                # Maximum tokens for answer generation
+  context_limit: 500            # Maximum characters sent to LLM from context
+  length_budget: 2000          # Maximum characters for combined context
+  max_answer_words: 50          # Maximum words in answer (for prompt guidance)
+
