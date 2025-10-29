@@ -376,6 +376,41 @@ def get_config_api():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/pdfs', methods=['GET'])
+def get_pdfs():
+    """Get list of loaded PDF files and chunk count"""
+    try:
+        if not rag_engine.is_ready():
+            return jsonify({
+                'pdfs': [],
+                'total_chunks': 0
+            })
+        
+        # Extract unique PDF sources from chunks
+        pdf_sources = set()
+        chunks = getattr(rag_engine, 'chunks', [])
+        
+        for chunk in chunks:
+            source = chunk.get('metadata', {}).get('source', '')
+            if source and source.endswith('.pdf'):
+                pdf_sources.add(source)
+        
+        # Return as list sorted alphabetically
+        pdf_list = sorted(list(pdf_sources))
+        
+        return jsonify({
+            'pdfs': pdf_list,
+            'total_chunks': len(chunks) if chunks else 0
+        })
+    except Exception as e:
+        print(f"❌ Error in /api/pdfs: {str(e)}")
+        return jsonify({
+            'pdfs': [],
+            'total_chunks': 0,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
