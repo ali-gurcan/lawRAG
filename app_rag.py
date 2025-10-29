@@ -391,9 +391,15 @@ def get_pdfs():
         chunks = getattr(rag_engine, 'chunks', [])
         
         for chunk in chunks:
-            source = chunk.get('metadata', {}).get('source', '')
-            if source and source.endswith('.pdf'):
-                pdf_sources.add(source)
+            metadata = chunk.get('metadata', {})
+            source = metadata.get('source', '')
+            # Handle both full paths and basenames
+            if source:
+                # Extract basename if it's a path
+                import os
+                source_name = os.path.basename(source) if os.path.sep in source or '/' in source else source
+                if source_name.endswith('.pdf') or source.endswith('.pdf'):
+                    pdf_sources.add(source_name)
         
         # Return as list sorted alphabetically
         pdf_list = sorted(list(pdf_sources))
