@@ -720,18 +720,17 @@ class RAGEngine:
                 'has_sources': False
             }
         
-        # Extract context and sources
+        # Extract context candidates and sources
         contexts = []
         sources = []
+        scores_only = []
         total_confidence = 0
-        
         for chunk, score in results:
             contexts.append(chunk['text'])
-            
+            scores_only.append(float(score))
             # Kaynak bilgisi zorunlu
             source_name = chunk['metadata'].get('source', 'Bilinmeyen Kaynak')
             chunk_id = chunk.get('id', 0)
-            
             sources.append({
                 'source': source_name,
                 'score': float(score),
@@ -745,8 +744,30 @@ class RAGEngine:
         
         avg_confidence = total_confidence / len(results)
         
-        # Use only top 2 chunks for more focused, higher quality answers
-        combined_context = "\n\n".join(contexts[:2])  # Top 2 chunks for better quality
+        # Adaptive selection of top-n contexts (n in [1,3]) with length budget
+        n_candidates = min(3, len(contexts))
+        s1 = scores_only[0] if n_candidates >= 1 else 0.0
+        s2 = scores_only[1] if n_candidates >= 2 else 0.0
+        s3 = scores_only[2] if n_candidates >= 3 else 0.0
+        selected_n = n_candidates
+        if n_candidates >= 2 and (s1 - s2 >= 0.25) and (s1 >= 0.75):
+            selected_n = 1
+        elif n_candidates >= 3 and (s2 >= 0.55) and ((s2 - s3 >= 0.15) or (s1 - s3 >= 0.35)):
+            selected_n = 2
+        else:
+            selected_n = n_candidates
+        
+        # Length budget (characters)
+        length_budget = 2000
+        combined_context = ""
+        for i in range(selected_n):
+            piece = contexts[i]
+            tentative = (combined_context + ("\n\n" if combined_context else "") + piece)
+            if len(tentative) <= length_budget or i == 0:
+                combined_context = tentative
+            else:
+                selected_n = i  # stop adding more
+                break
         
         # Determine if we should use LLM
         if use_llm is None:
@@ -829,20 +850,20 @@ class RAGEngine:
             yield "data: " + json.dumps({'type': 'error', 'content': 'İlgili bilgi bulunamadı'}) + "\n\n"
             return
         
-        # Extract context and calculate confidence
-        contexts = []
-        sources = []
+        # Extract context and calculate confidence (with adaptive selection)
+        contexts_all = []
+        sources_all = []
+        scores_only = []
         total_confidence = 0
-        
         for chunk, score in results:
-            contexts.append(chunk['text'])
-            sources.append({
+            contexts_all.append(chunk['text'])
+            scores_only.append(float(score))
+            sources_all.append({
                 'source': chunk['metadata'].get('source', 'Bilinmeyen Kaynak'),
                 'score': float(score),
                 'article': chunk['metadata'].get('article', None)
             })
             total_confidence += score
-        
         avg_confidence = total_confidence / len(results)
         confidence_pct = float(avg_confidence * 100)
         
@@ -850,12 +871,31 @@ class RAGEngine:
         yield "data: " + json.dumps({
             'type': 'metadata',
             'confidence': confidence_pct,
-            'sources': sources[:3],
+            'sources': sources_all[:3],
             'low_confidence': confidence_pct < 50
         }) + "\n\n"
         
-        # Generate answer with LLM
-        combined_context = "\n\n".join(contexts[:2])
+        # Adaptive selection of context for streaming
+        n_candidates = min(3, len(contexts_all))
+        s1 = scores_only[0] if n_candidates >= 1 else 0.0
+        s2 = scores_only[1] if n_candidates >= 2 else 0.0
+        s3 = scores_only[2] if n_candidates >= 3 else 0.0
+        selected_n = n_candidates
+        if n_candidates >= 2 and (s1 - s2 >= 0.25) and (s1 >= 0.75):
+            selected_n = 1
+        elif n_candidates >= 3 and (s2 >= 0.55) and ((s2 - s3 >= 0.15) or (s1 - s3 >= 0.35)):
+            selected_n = 2
+        else:
+            selected_n = n_candidates
+        length_budget = 2000
+        combined_context = ""
+        for i in range(selected_n):
+            piece = contexts_all[i]
+            tentative = (combined_context + ("\n\n" if combined_context else "") + piece)
+            if len(tentative) <= length_budget or i == 0:
+                combined_context = tentative
+            else:
+                break
         
         full_answer = ""
         if self.llm_model and self.llm_tokenizer:
@@ -872,7 +912,7 @@ class RAGEngine:
         # Format the complete answer with template
         formatted_answer = self._format_answer(
             full_answer if full_answer.strip() else combined_context,
-            sources,
+            sources_all,
             avg_confidence
         )
         
