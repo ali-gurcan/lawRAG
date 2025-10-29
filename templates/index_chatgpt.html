@@ -6,6 +6,8 @@
     <title>Hukuki AI Asistan</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style_chatgpt.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icon library: Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
     <!-- Sidebar -->
@@ -51,7 +53,7 @@
             </div>
 
             <div class="sidebar-section">
-                <div class="section-title">📄 Yüklü PDF'ler</div>
+                <div class="section-title"><i data-lucide="file-text"></i> Yüklü PDF'ler</div>
                 <div id="pdfList" class="pdf-list">
                     <div class="loading-pdfs">Yükleniyor...</div>
                 </div>
@@ -75,12 +77,12 @@
         <div class="model-info-header">
             <div class="model-badges" id="modelBadges">
                 <div class="model-badge embedding-badge">
-                    <span class="badge-icon">🔍</span>
+                    <span class="badge-icon"><i data-lucide="search"></i></span>
                     <span class="badge-label">Embedding:</span>
                     <span class="badge-value" id="embeddingModel">Yükleniyor...</span>
                 </div>
                 <div class="model-badge llm-badge">
-                    <span class="badge-icon">🦙</span>
+                    <span class="badge-icon"><i data-lucide="cpu"></i></span>
                     <span class="badge-label">LLM:</span>
                     <span class="badge-value" id="llmModel">Yükleniyor...</span>
                 </div>
@@ -91,24 +93,24 @@
             <!-- Welcome Screen -->
             <div class="welcome-screen" id="welcomeScreen">
                 <div class="welcome-content">
-                    <h1>⚖️ Hukuki AI Asistan</h1>
+                    <h1><i data-lucide="scale"></i> Hukuki AI Asistan</h1>
                     <p>Türkiye hukuk mevzuatı hakkında sorular sorun. PDF dokümanlardan bilgi çekerek size yardımcı oluyorum.</p>
                     
                     <div class="example-grid">
                         <button class="example-card" onclick="sendExample(this)">
-                            <div class="example-icon">🏛️</div>
+                            <div class="example-icon"><i data-lucide="landmark"></i></div>
                             <div class="example-text">Cumhuriyetin temel nitelikleri nelerdir?</div>
                         </button>
                         <button class="example-card" onclick="sendExample(this)">
-                            <div class="example-icon">👥</div>
+                            <div class="example-icon"><i data-lucide="users"></i></div>
                             <div class="example-text">İnsan hakları ve özgürlükler nelerdir?</div>
                         </button>
                         <button class="example-card" onclick="sendExample(this)">
-                            <div class="example-icon">📖</div>
+                            <div class="example-icon"><i data-lucide="book-open"></i></div>
                             <div class="example-text">Eğitim hakkı nasıl tanımlanır?</div>
                         </button>
                         <button class="example-card" onclick="sendExample(this)">
-                            <div class="example-icon">💼</div>
+                            <div class="example-icon"><i data-lucide="briefcase"></i></div>
                             <div class="example-text">Çalışma hakkı nedir?</div>
                         </button>
                     </div>
@@ -150,6 +152,14 @@
 
     <!-- Markdown render library -->
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script>
+      // Initialize Lucide icons after DOM and before app script
+      document.addEventListener('DOMContentLoaded', function() {
+        if (window.lucide && window.lucide.createIcons) {
+          window.lucide.createIcons();
+        }
+      });
+    </script>
     <script src="{{ url_for('static', filename='js/script_chatgpt.js') }}"></script>
 </body>
 </html>
