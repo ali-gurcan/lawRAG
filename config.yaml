@@ -9,13 +9,13 @@ active_models:
 
 # Retrieval Configuration
 retrieval:
-  top_k: 2
+  top_k: 3                  # Increased from 2 for better selection
   use_hybrid_search: true
   use_reranking: true
   use_query_expansion: true
-  hybrid_alpha: 0.7        # 70% dense, 30% BM25
-  reranking_beta: 0.6      # 60% reranker, 40% retrieval
-  retrieval_k_multiplier: 3
+  hybrid_alpha: 0.75        # Increased dense retrieval weight (75% dense, 25% BM25)
+  reranking_beta: 0.7       # Increased reranker weight (70% reranker, 30% retrieval)
+  retrieval_k_multiplier: 4 # Get more candidates for better reranking
 
 # Chunking Configuration
 chunking:
@@ -47,6 +47,9 @@ confidence:
   low_threshold: 60
   medium_threshold: 80
   enable_warnings: true
+  calculation_method: weighted_top  # Options: average, weighted_top, top_score_only
+  top_score_weight: 0.7              # Increased weight for top score (70% top, 30% others)
+  boost_high_scores: true            # Boost confidence if top score > 0.85
 
 # Streaming Configuration
 streaming:

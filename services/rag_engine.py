@@ -601,16 +601,45 @@ class RAGEngine:
         return results
     
     def calculate_confidence(self, scores):
-        """Calculate overall confidence from retrieval scores"""
+        """
+        Calculate overall confidence from retrieval scores
+        Uses configurable method from confidence config
+        """
         if not scores:
             return 0.0
         
-        # Average of top scores
-        avg_score = sum(scores) / len(scores)
+        conf_config = self.config.confidence
+        method = getattr(conf_config, 'calculation_method', 'weighted_top')
+        
+        if method == 'top_score_only':
+            # Use only the top score
+            confidence = max(scores) if scores else 0.0
+        elif method == 'weighted_top':
+            # Weighted combination: top score gets more weight
+            sorted_scores = sorted(scores, reverse=True)
+            top_weight = getattr(conf_config, 'top_score_weight', 0.6)
+            if len(sorted_scores) >= 2:
+                # Weighted average: top score * weight + others * (1-weight) / (n-1)
+                remaining_weight = (1.0 - top_weight) / (len(sorted_scores) - 1)
+                confidence = (sorted_scores[0] * top_weight + 
+                            sum(sorted_scores[1:]) * remaining_weight)
+            else:
+                confidence = sorted_scores[0] if sorted_scores else 0.0
+        else:  # 'average' (default fallback)
+            # Simple average
+            confidence = sum(scores) / len(scores)
+        
+        # Boost if top score is very high and boost is enabled
+        if getattr(conf_config, 'boost_high_scores', True) and scores:
+            top_score = max(scores)
+            if top_score > 0.85:
+                # Boost by up to 10% for very high scores
+                boost = (top_score - 0.85) * 0.4  # Scale from 0-0.15 to 0-0.06
+                confidence = min(1.0, confidence + boost)
         
         # Normalize to 0-100%
-        confidence = min(100, int(avg_score * 100))
-        return confidence
+        confidence_pct = min(100, int(confidence * 100))
+        return confidence_pct / 100.0  # Return as 0-1 for consistency
     
     def _format_answer(self, answer_text: str, sources: List[Dict], confidence: float, is_context_only: bool = False) -> str:
         """
@@ -724,7 +753,6 @@ class RAGEngine:
         contexts = []
         sources = []
         scores_only = []
-        total_confidence = 0
         for chunk, score in results:
             contexts.append(chunk['text'])
             scores_only.append(float(score))
@@ -740,9 +768,9 @@ class RAGEngine:
                 'end_char': chunk.get('end_char', 0),
                 'article': chunk['metadata'].get('article', None)
             })
-            total_confidence += score
         
-        avg_confidence = total_confidence / len(results)
+        # Calculate confidence using configurable method (not simple average)
+        avg_confidence = self.calculate_confidence(scores_only)
         
         # Adaptive selection of top-n contexts (n in [1,3]) with length budget
         n_candidates = min(3, len(contexts))
@@ -854,7 +882,6 @@ class RAGEngine:
         contexts_all = []
         sources_all = []
         scores_only = []
-        total_confidence = 0
         for chunk, score in results:
             contexts_all.append(chunk['text'])
             scores_only.append(float(score))
@@ -863,8 +890,8 @@ class RAGEngine:
                 'score': float(score),
                 'article': chunk['metadata'].get('article', None)
             })
-            total_confidence += score
-        avg_confidence = total_confidence / len(results)
+        # Calculate confidence using configurable method
+        avg_confidence = self.calculate_confidence(scores_only)
         confidence_pct = float(avg_confidence * 100)
         
         # Send metadata first

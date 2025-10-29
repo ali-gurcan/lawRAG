@@ -88,6 +88,9 @@ class ConfidenceConfig:
     low_threshold: int = 60  # Below this is low confidence
     medium_threshold: int = 80  # Above this is high confidence
     enable_warnings: bool = True
+    calculation_method: str = 'weighted_top'  # average, weighted_top, top_score_only
+    top_score_weight: float = 0.6  # Weight for top score in weighted_top method
+    boost_high_scores: bool = True  # Boost if top score > 0.85
 
 
 @dataclass
