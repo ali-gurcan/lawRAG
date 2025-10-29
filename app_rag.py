@@ -97,7 +97,7 @@ print("="*70 + "\n")
 @app.route('/')
 def index():
     """Main page - ChatGPT Style RAG UI"""
-    return render_template('index_chatgpt.html')
+    return render_template('index.html')
 
 
 @app.route('/api/chat', methods=['POST'])

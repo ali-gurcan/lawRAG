@@ -60,7 +60,7 @@ nlp/
 │   └── js/
 │
 ├── templates/                 # HTML templates
-│   └── index_chatgpt.html
+│   └── index.html
 │
 ├── docs/                      # PDF documents
 │   └── *.pdf
