@@ -557,86 +557,64 @@ class RAGEngine:
             Formatted answer string
         """
         confidence_pct = int(confidence * 100)
-        
-        # Build formatted answer
-        parts = []
-        
-        # Main answer section
-        parts.append("💬 CEVAP")
-        parts.append("─" * 60)
-        
-        if is_context_only:
-            # For context-only, show as quote
-            parts.append("Aşağıdaki metin, sorunuzla ilgili bulunan en uygun bölümdür:\n")
-        
-        # Clean and format answer text
-        answer_clean = answer_text.strip()
-        if not answer_clean.endswith(('.', '!', '?')):
-            answer_clean += "."
-        
-        parts.append(answer_clean)
-        parts.append("")  # Empty line
-        
-        # Source section
-        parts.append("📚 KAYNAK BİLGİLERİ")
-        parts.append("─" * 60)
-        
-        primary_source = sources[0] if sources else None
-        if primary_source:
-            # Get location info from chunk (we need to pass chunks too, or find a way)
-            # For now, use article if available
-            article = primary_source.get('article')
-            
+
+        def _short_quote(text: str, max_len: int = 140) -> str:
+            if not text:
+                return ""
+            t = text.strip().replace("\n", " ")
+            # Prefer the first sentence
+            end_idx = -1
+            for sep in [".", "!", "?"]:
+                idx = t.find(sep)
+                if idx != -1 and (end_idx == -1 or idx < end_idx):
+                    end_idx = idx
+            if 0 < end_idx <= max_len:
+                t = t[: end_idx + 1]
+            if len(t) > max_len:
+                t = t[: max_len - 1].rstrip() + "…"
+            return f"“{t}”"
+
+        def _loc_label(src: Dict) -> str:
+            article = src.get('article')
             if article:
-                # Show article reference as primary location
-                parts.append(f"📍 Konum: {article}")
-            else:
-                # Fallback to chunk-based location info
-                chunk_id = primary_source.get('chunk_id', 0)
-                if chunk_id > 0:
-                    parts.append(f"📍 Konum: Bölüm {chunk_id}")
+                # Normalize formats like "MADDE 3" -> "Anayasa m.3" when possible
+                m = re.search(r"MADDE\s*(\d+)", str(article))
+                if m:
+                    return f"m.{m.group(1)}"
+                return str(article)
+            chunk_id = src.get('chunk_id', 0)
+            return f"Bölüm {chunk_id}" if chunk_id else "Konum"
+
+        # Build formatted answer in a clean, minimal structure
+        parts: List[str] = []
+
+        # CEVAP
+        parts.append("CEVAP")
+        parts.append("- " + answer_text.strip().rstrip(".!") + ".")
+        parts.append("")
+
+        # DAYANAK (up to top-3)
+        if sources:
+            parts.append("DAYANAK")
+            for src in sources[:3]:
+                label = _loc_label(src)
+                quote = _short_quote(src.get('preview') or src.get('text') or '')
+                if quote:
+                    parts.append(f"- Anayasa {label} — {quote}")
                 else:
-                    parts.append(f"📍 Konum: Belirtilmemiş")
-        
-        # Additional sources if available
-        if len(sources) > 1:
-            additional_locs = []
-            for src in sources[1:]:
-                article = src.get('article')
-                if article:
-                    additional_locs.append(article)
-                else:
-                    chunk_id = src.get('chunk_id', 0)
-                    if chunk_id > 0:
-                        additional_locs.append(f"Bölüm {chunk_id}")
-            
-            if additional_locs:
-                parts.append(f"\n📋 Ek Referanslar: {', '.join(additional_locs[:3])}")
-            else:
-                parts.append(f"\n📋 Ek Referanslar: {len(sources) - 1} adet")
-        
-        parts.append("")  # Empty line
-        
-        # Confidence indicator
-        parts.append("📊 GÜVEN SEVİYESİ")
-        parts.append("─" * 60)
-        
+                    parts.append(f"- Anayasa {label}")
+            parts.append("")
+
+        # GÜVEN
         if confidence_pct >= 80:
-            confidence_emoji = "🟢"
-            confidence_text = "Yüksek"
+            conf_text = "Yüksek"
         elif confidence_pct >= 50:
-            confidence_emoji = "🟡"
-            confidence_text = "Orta"
+            conf_text = "Orta"
         else:
-            confidence_emoji = "🔴"
-            confidence_text = "Düşük"
-        
-        parts.append(f"{confidence_emoji} {confidence_text} ({confidence_pct}%)")
-        
-        # Warning for low confidence
-        if confidence_pct < 50:
-            parts.append("\n⚠️  Bu cevaba düşük güvenle ulaştım. Daha spesifik bir soru sormayı deneyebilirsiniz.")
-        
+            conf_text = "Düşük"
+        parts.append("GÜVEN")
+        parts.append(f"- {conf_text} ({confidence_pct}%)")
+
         return "\n".join(parts)
     
     def generate_answer(self, query: str, use_llm=None) -> Dict:
