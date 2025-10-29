@@ -271,21 +271,52 @@ def get_models():
                 base_url = os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434').rstrip('/')
                 model_tag = os.getenv('OLLAMA_MODEL', '')
                 if model_tag:
-                    resp = requests.post(f"{base_url}/api/show", json={"model": model_tag}, timeout=3)
+                    resp = requests.post(f"{base_url}/api/show", json={"model": model_tag}, timeout=5)
                     if resp.ok:
                         data = resp.json()
+                        # Extract quantization from model details or filename
+                        model_details = data.get('details', {})
+                        model_family = data.get('details', {}).get('family', '')
+                        # Check for quantization in multiple places
+                        model_name_lower = model_tag.lower()
+                        quant_detected = None
+                        
+                        # Pattern matching for quantization
+                        quant_patterns = {
+                            'q4_k_m': ('Q4_K_M', '4-bit'),
+                            'q4_k_s': ('Q4_K_S', '4-bit'),
+                            'q5_k_m': ('Q5_K_M', '5-bit'),
+                            'q8_0': ('Q8_0', '8-bit'),
+                        }
+                        
+                        for pattern, (name, bits) in quant_patterns.items():
+                            if pattern in model_name_lower:
+                                quant_detected = name
+                                quant_verified = True
+                                break
+                        
                         # Compact metadata for UI
                         ollama_meta = {
                             'model': data.get('model'),
                             'modified_at': data.get('modified_at'),
                             'size': data.get('size'),
-                            'digest': data.get('digest'),
-                            'parameters': data.get('parameters'),
-                            'quantization': 'q4_k_m' if 'q4_k_m' in model_tag.lower() else None
+                            'digest': data.get('digest', '')[:16] + '...' if data.get('digest') else None,
+                            'parameters': model_details.get('parameter_size', data.get('parameters')),
+                            'quantization_detected': quant_detected,
+                            'family': model_family
                         }
-                        quant_verified = 'q4_k_m' in model_tag.lower()
-            except Exception:
-                pass
+                        if not quant_verified:
+                            # Fallback: check if quantization is mentioned anywhere
+                            quant_verified = 'q4_k_m' in str(model_name_lower) or 'q4' in str(model_name_lower)
+                    else:
+                        # Log non-200 responses for debugging
+                        print(f"⚠️  Ollama API returned {resp.status_code}: {resp.text[:100]}")
+            except requests.exceptions.ConnectionError:
+                print("⚠️  Ollama API not reachable (connection failed)")
+            except requests.exceptions.Timeout:
+                print("⚠️  Ollama API timeout")
+            except Exception as e:
+                print(f"⚠️  Ollama API check failed: {str(e)}")
         
         return jsonify({
             'embedding_model': {
