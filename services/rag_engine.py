@@ -226,7 +226,10 @@ class RAGEngine:
         print(f"      📊 Ortalama chunk boyutu: {avg_chunk_size:,} karakter")
         print(f"      ⏳ Tahmini süre: {len(self.chunks) // 50}-{len(self.chunks) // 30} dakika...")
         
-        texts = [chunk['text'] for chunk in self.chunks]
+        # Filter out empty/whitespace-only texts to avoid tokenizer empty batch errors
+        texts = [chunk['text'] for chunk in self.chunks if chunk.get('text') and chunk['text'].strip()]
+        if not texts:
+            raise ValueError("No valid chunk texts to encode for embeddings.")
         
         # Increase batch size for faster encoding
         import time
@@ -237,23 +240,107 @@ class RAGEngine:
             # BGE-M3 encoding (returns dense embeddings by default)
             print(f"      💫 BGE-M3 dense encoding (batch işleniyor)...")
             
-            # Process in smaller batches to avoid memory issues
-            batch_size = 16  # Smaller batch for memory efficiency
-            all_embeddings = []
+            # Ultra-small batches to prevent 32GB RAM spikes
+            batch_size = 4  # Very small batch for extreme memory efficiency
+            import gc
             
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                if (i // batch_size) % 5 == 0:  # Progress every 5 batches
-                    print(f"      🔄 Batch {i // batch_size + 1}/{(len(texts) + batch_size - 1) // batch_size}")
+            # Incremental stacking to avoid accumulating large lists
+            embeddings_list = []
+            total_processed = 0
+            
+            num_batches = (len(texts) + batch_size - 1) // batch_size
+            for batch_idx in range(num_batches):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, len(texts))
+                batch_texts = texts[start_idx:end_idx]
                 
-                outputs = self.model.encode(
-                    batch_texts,
-                    batch_size=batch_size,
-                    max_length=4096  # Reduced from 8192 for memory
-                )
-                all_embeddings.append(outputs['dense_vecs'])
+                # Ultra-strict filtering - no empty strings, no None, must be valid text
+                batch_texts = [
+                    str(t).strip() 
+                    for t in batch_texts 
+                    if t is not None 
+                    and isinstance(t, (str, bytes))
+                    and str(t).strip()
+                    and len(str(t).strip()) > 10
+                    and len(str(t).strip()) < 50000  # Max length protection
+                ]
+                
+                # Final validation - must have at least 1 valid text
+                if not batch_texts or len(batch_texts) == 0:
+                    print(f"         ⚠️  Batch {batch_idx + 1} atlandı: boş batch")
+                    continue
+                
+                # Ensure all texts are truly strings
+                batch_texts = [str(t) for t in batch_texts if t]
+                if not batch_texts:
+                    continue
+                
+                if (batch_idx + 1) % 5 == 0 or batch_idx == 0:
+                    print(f"      🔄 Batch {batch_idx + 1}/{num_batches} ({len(batch_texts)} texts)")
+                
+                try:
+                    # Validate before encoding
+                    if not isinstance(batch_texts, list) or len(batch_texts) == 0:
+                        raise ValueError(f"Invalid batch_texts: {type(batch_texts)}, length: {len(batch_texts) if hasattr(batch_texts, '__len__') else 'N/A'}")
+                    
+                    # Encode with minimum memory footprint
+                    # Use smaller internal batch_size to avoid tokenizer issues
+                    outputs = self.model.encode(
+                        batch_texts,
+                        batch_size=min(len(batch_texts), 2),  # Max 2 at a time internally
+                        max_length=4096
+                        # Note: normalize_embeddings not supported by BGE-M3 tokenizer
+                    )
+                    
+                    # Validate output structure
+                    if not outputs or 'dense_vecs' not in outputs:
+                        raise ValueError(f"Invalid output structure: {type(outputs)}, keys: {outputs.keys() if isinstance(outputs, dict) else 'N/A'}")
+                    dense_vecs = outputs['dense_vecs']
+                    batch_count = len(batch_texts)  # Save before deletion
+                    if isinstance(dense_vecs, np.ndarray):
+                        embeddings_list.append(dense_vecs)
+                    else:
+                        embeddings_list.append(np.array(dense_vecs))
+                    
+                    # Aggressive cleanup after each batch
+                    del outputs
+                    del dense_vecs
+                    del batch_texts
+                    gc.collect()
+                    
+                    # Clear PyTorch cache if available
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except:
+                        pass
+                    
+                    total_processed += batch_count
+                except Exception as e:
+                    print(f"         ⚠️  Batch {batch_idx + 1} atlandı: {e}")
+                    continue
             
-            embeddings = np.vstack(all_embeddings)  # Combine all batches
+            # Stack incrementally in chunks to avoid 32GB spike
+            if not embeddings_list:
+                raise ValueError("No embeddings generated!")
+            
+            print(f"      📊 {total_processed} text encoded, stacking embeddings...")
+            # Stack in smaller chunks
+            chunk_size = 20  # Stack 20 batches at a time
+            stacked_chunks = []
+            for i in range(0, len(embeddings_list), chunk_size):
+                chunk = embeddings_list[i:i + chunk_size]
+                stacked = np.vstack(chunk)
+                stacked_chunks.append(stacked)
+                del chunk
+                gc.collect()
+            
+            # Final stack
+            embeddings = np.vstack(stacked_chunks) if stacked_chunks else embeddings_list[0]
+            del embeddings_list
+            del stacked_chunks
+            gc.collect()
         else:
             # Standard SentenceTransformer encoding
             embeddings = self.model.encode(
@@ -270,6 +357,14 @@ class RAGEngine:
         print(f"\n      📚 FAISS vektör veritabanı oluşturuluyor...")
         self.index = faiss.IndexFlatL2(self.dimension)
         self.index.add(embeddings.astype('float32'))
+        # Free large temporary arrays ASAP
+        try:
+            del embeddings
+            del texts
+        except Exception:
+            pass
+        import gc as _gc
+        _gc.collect()
         
         print(f"      ✅ {self.index.ntotal} vektör eklendi")
         
@@ -278,6 +373,12 @@ class RAGEngine:
             print(f"\n      📊 BM25 index oluşturuluyor (hybrid search için)...")
             tokenized_chunks = [self._tokenize(chunk['text']) for chunk in self.chunks]
             self.bm25 = BM25Okapi(tokenized_chunks)
+            # Free tokenized view
+            try:
+                del tokenized_chunks
+            except Exception:
+                pass
+            _gc.collect()
             print(f"      ✅ BM25 index hazır!")
         
         # Save to cache

@@ -71,7 +71,10 @@ if os.path.exists(docs_dir):
             rag_engine.process_pdfs(pdf_files)
             print("\n✅ PDF processing complete!")
         except Exception as e:
+            import traceback
             print(f"\n❌ PDF processing failed: {e}")
+            print("\n📋 Full traceback:")
+            traceback.print_exc()
             exit(1)
     else:
         print(f"⚠️  No PDF files found in {docs_dir}/")

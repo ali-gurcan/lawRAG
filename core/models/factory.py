@@ -42,6 +42,8 @@ class EmbeddingModelFactory(ModelFactory):
         print(f"         Quality: {config.quality_score}/10")
         
         try:
+            # Ensure MPS doesn't get used implicitly on macOS; prefer CPU for stability
+            os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
             # Create cache path
             model_cache = os.path.join(cache_dir, 'sentence_transformers')
             os.makedirs(model_cache, exist_ok=True)
@@ -49,9 +51,11 @@ class EmbeddingModelFactory(ModelFactory):
             # Check for special models (BGE-M3)
             if 'bge-m3' in config.name.lower():
                 print(f"      🚀 Using FlagEmbedding for BGE-M3...")
+                # Force CPU and FP32 to avoid large Metal (MPS) allocations on macOS
                 model = BGEM3FlagModel(
                     config.name,
-                    use_fp16=True
+                    use_fp16=False,
+                    device='cpu'
                 )
                 model.is_bge_m3 = True
             else:
@@ -64,7 +68,8 @@ class EmbeddingModelFactory(ModelFactory):
             
             # Set batch size
             if hasattr(model, 'encode'):
-                model.batch_size = config.batch_size
+                # Be conservative to reduce peak RAM; can be tuned via config later
+                model.batch_size = min(getattr(config, 'batch_size', 16), 8)
             
             print(f"      ✅ Embedding model loaded! (Dim: {config.dimension})")
             return model
