@@ -79,6 +79,7 @@ nlp/
 
 ### 1️⃣ Installation
 
+#### macOS/Linux:
 ```bash
 # Clone repository
 cd ~/Desktop/nlp
@@ -90,6 +91,21 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements_rag.txt
 ```
+
+#### Windows:
+```bash
+# Clone repository
+cd C:\Users\YourName\Desktop\nlp
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements_rag.txt
+```
+
+**Note:** Proje cross-platform uyumludur (macOS, Windows, Linux). Git line endings otomatik normalize edilir (`.gitattributes`).
 
 ### 2️⃣ Configuration
 
@@ -127,11 +143,46 @@ cp your_documents.pdf docs/
 
 ### 4️⃣ Run
 
+#### macOS/Linux:
 ```bash
 python3 app_rag.py
 ```
 
+#### Windows:
+```bash
+python app_rag.py
+```
+
 Visit: **http://localhost:5001**
+
+---
+
+## 🌐 Cross-Platform Notes
+
+### Platform Differences
+
+| Feature | macOS | Windows | Linux |
+|---------|-------|---------|-------|
+| **Python** | `python3` | `python` | `python3` |
+| **Virtual Env** | `source venv/bin/activate` | `venv\Scripts\activate` | `source venv/bin/activate` |
+| **GPU Support** | Metal (MPS) - Auto-fallback to CPU | CUDA (if available) | CUDA |
+| **Path Separator** | `/` | `\` (auto-handled) | `/` |
+| **Line Endings** | LF | CRLF → Auto-converted to LF | LF |
+
+### 🔧 Platform-Specific Tips
+
+**macOS:**
+- Metal GPU support otomatik devre dışı (CPU kullanır - daha stabil)
+- BGE-M3 embedding model CPU'da çalışır (RAM sorunlarını önler)
+
+**Windows:**
+- CUDA varsa otomatik algılanır (NVIDIA GPU)
+- CPU fallback her zaman mevcut
+
+**Ortak Sorunlar:**
+- **Git Line Endings:** `.gitattributes` dosyası otomatik normalize eder
+- **Path Issues:** `os.path.join()` kullanıldığı için sorun yok
+- **GPU:** Platform-agnostic kod (CUDA/MPS/CPU otomatik seçilir)
 
 ---
 

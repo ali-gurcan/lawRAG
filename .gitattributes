@@ -1,0 +1,28 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Force LF for text files
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+
+# Binary files
+*.pkl binary
+*.index binary
+*.pdf binary
+*.so binary
+*.dylib binary
+*.dll binary
+
+# OS specific
+.gitignore text eol=lf
+.gitattributes text eol=lf
+

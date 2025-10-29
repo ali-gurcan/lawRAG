@@ -385,8 +385,17 @@ class ModelManager:
         # Force garbage collection
         import gc
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # Platform-agnostic cache clearing
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass  # CUDA not available on macOS
+        try:
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except Exception:
+            pass  # MPS not available on Windows
         
         print("✅ All models cleared from memory")
 
