@@ -168,18 +168,123 @@ def chat_stream():
         return jsonify({'error': str(e)}), 500
 
 
+def _detect_quantization_info(llm_backend: str, llm_config) -> tuple:
+    """
+    Detect quantization information dynamically from environment and model state
+    
+    Returns:
+        tuple: (quantization_info, model_path)
+    """
+    # Quantization patterns (can be extended)
+    quantization_patterns = {
+        'q4_k_m': ('Q4_K_M', '4-bit'),
+        'q4_k_s': ('Q4_K_S', '4-bit'),
+        'q5_k_m': ('Q5_K_M', '5-bit'),
+        'q8_0': ('Q8_0', '8-bit'),
+        'q8': ('Q8', '8-bit'),
+        'f16': ('F16', '16-bit'),
+        'f32': ('F32', '32-bit'),
+        'nf4': ('NF4', '4-bit'),
+        'q4': ('Q4', '4-bit'),
+        'q5': ('Q5', '5-bit')
+    }
+    
+    # Backend types
+    BACKEND_OLLAMA = 'ollama'
+    BACKEND_LLAMA_CPP_VARIANTS = ('llama_cpp', 'llamacpp', 'llama-cpp')
+    BACKEND_TRANSFORMERS = 'transformers'
+    
+    backend_lower = llm_backend.lower().strip()
+    
+    # Detect from backend type
+    if backend_lower == BACKEND_OLLAMA:
+        model_name = os.getenv('OLLAMA_MODEL', '')
+        model_path = f"Ollama: {model_name}" if model_name else "Ollama: Not specified"
+        
+        # Detect quantization from model name
+        model_lower = model_name.lower()
+        for pattern, (name, bits) in quantization_patterns.items():
+            if pattern in model_lower:
+                return f"{name} ({bits} via Ollama)", model_path
+        
+        # Check for precision indicators
+        if any(p in model_lower for p in ['f16', 'f32', 'fp16', 'fp32']):
+            return "Full Precision (F16/F32 via Ollama)", model_path
+        
+        return "Ollama default quantization", model_path
+    
+    elif backend_lower in BACKEND_LLAMA_CPP_VARIANTS:
+        model_path = os.getenv('LLM_GGUF_PATH', '')
+        if model_path and os.path.exists(model_path):
+            filename_lower = os.path.basename(model_path).lower()
+            
+            # Detect from filename
+            for pattern, (name, bits) in quantization_patterns.items():
+                if pattern in filename_lower:
+                    return f"{name} ({bits} GGUF)", model_path
+            
+            return "GGUF (detected from filename)", model_path
+        else:
+            return "GGUF (path not set)", model_path or "N/A"
+    
+    else:  # Transformers backend
+        hf_quant = os.getenv('LLM_QUANT', '').lower()
+        model_path = getattr(llm_config, 'name', 'Unknown')
+        
+        # Check quantization env var
+        for pattern, (name, bits) in quantization_patterns.items():
+            if pattern in hf_quant:
+                return f"{name} ({bits} via bitsandbytes)", model_path
+        
+        # Check model config for dtype
+        dtype = getattr(llm_config, 'dtype', 'float32')
+        if 'float16' in dtype.lower() or 'fp16' in dtype.lower():
+            return "FP16 (16-bit)", model_path
+        elif 'bfloat16' in dtype.lower() or 'bf16' in dtype.lower():
+            return "BF16 (16-bit)", model_path
+        
+        return f"Full Precision ({dtype.upper()})", model_path
+
+
 @app.route('/api/models', methods=['GET'])
 def get_models():
-    """Get current model configuration"""
+    """Get current model configuration with backend and quantization info"""
     try:
         emb_config = config.get_embedding_model()
         llm_config = config.get_llm_model()
         
+        # Detect LLM backend from environment
+        llm_backend = os.getenv('LLM_BACKEND', 'transformers').lower().strip()
+        
+        # Get quantization info dynamically
+        quantization_info, model_path = _detect_quantization_info(
+            llm_backend, 
+            llm_config
+        )
+        
         return jsonify({
-            'embedding_model': emb_config.display_name,
-            'llm_model': llm_config.display_name,
-            'embedding_quality': emb_config.quality_score,
-            'llm_quality': llm_config.quality_score,
+            'embedding_model': {
+                'name': emb_config.display_name,
+                'model_id': emb_config.name,
+                'quality': emb_config.quality_score,
+                'dimension': emb_config.dimension,
+                'size_gb': emb_config.size_gb
+            },
+            'llm_model': {
+                'name': llm_config.display_name,
+                'model_id': llm_config.name,
+                'quality': llm_config.quality_score,
+                'size_gb': llm_config.size_gb,
+                'backend': llm_backend,
+                'quantization': quantization_info,
+                'model_path': model_path,
+                'device': getattr(llm_config, 'device', 'cpu'),
+                'dtype': getattr(llm_config, 'dtype', 'float32')
+            },
+            'reranker': {
+                'name': config.get_reranker_model().display_name,
+                'model_id': config.get_reranker_model().name
+            },
             'features': {
                 'hybrid_search': config.retrieval.use_hybrid_search,
                 'reranking': config.retrieval.use_reranking,

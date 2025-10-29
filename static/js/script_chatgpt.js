@@ -59,31 +59,65 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadModelInfo() {
     try {
         const response = await fetch('/api/models');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
         
+        // Handle new API structure (nested objects)
         if (data.embedding_model && data.llm_model) {
-            // Format model names (remove long prefixes)
-            const embeddingName = data.embedding_model
-                .replace('multilingual-e5-large', 'E5-Large')
-                .replace('paraphrase-multilingual-mpnet-base-v2', 'MPNet-Multi')
-                .replace('all-MiniLM-L6-v2', 'MiniLM-L6')
-                .replace('all-mpnet-base-v2', 'MPNet');
+            // Extract names from nested structure
+            const embeddingInfo = typeof data.embedding_model === 'string' 
+                ? { name: data.embedding_model } 
+                : data.embedding_model;
             
-            const llmName = data.llm_model
-                .replace('Llama-3.2-1B-Instruct', 'Llama-3.2-1B')
-                .replace('Qwen2.5-1.5B-Instruct', 'Qwen-1.5B')
-                .replace('Qwen2.5-3B-Instruct', 'Qwen-3B');
+            const llmInfo = typeof data.llm_model === 'string'
+                ? { name: data.llm_model }
+                : data.llm_model;
             
-            document.getElementById('embeddingModel').textContent = embeddingName;
-            document.getElementById('embeddingModel').title = data.embedding_full;
+            // Get display names
+            const embeddingName = embeddingInfo.name || embeddingInfo.display_name || 'Bilinmiyor';
+            const llmName = llmInfo.name || llmInfo.display_name || 'Bilinmiyor';
             
-            document.getElementById('llmModel').textContent = llmName;
-            document.getElementById('llmModel').title = data.llm_full;
+            // Update embedding badge
+            const embeddingElement = document.getElementById('embeddingModel');
+            if (embeddingElement) {
+                embeddingElement.textContent = embeddingName;
+                embeddingElement.title = embeddingInfo.model_id || embeddingName;
+            }
+            
+            // Update LLM badge with quantization info if available
+            const llmElement = document.getElementById('llmModel');
+            if (llmElement) {
+                let displayText = llmName;
+                if (llmInfo.quantization) {
+                    displayText += ` (${llmInfo.quantization.split(' ')[0]})`;
+                }
+                llmElement.textContent = displayText;
+                
+                // Tooltip with full info
+                const tooltipParts = [
+                    `Model: ${llmName}`,
+                    `Backend: ${llmInfo.backend || 'transformers'}`,
+                ];
+                if (llmInfo.quantization) {
+                    tooltipParts.push(`Quantization: ${llmInfo.quantization}`);
+                }
+                if (llmInfo.model_path) {
+                    tooltipParts.push(`Path: ${llmInfo.model_path}`);
+                }
+                llmElement.title = tooltipParts.join('\n');
+            }
+        } else {
+            throw new Error('Invalid API response structure');
         }
     } catch (error) {
         console.error('Model bilgisi yüklenemedi:', error);
-        document.getElementById('embeddingModel').textContent = 'Hata';
-        document.getElementById('llmModel').textContent = 'Hata';
+        const embeddingEl = document.getElementById('embeddingModel');
+        const llmEl = document.getElementById('llmModel');
+        if (embeddingEl) embeddingEl.textContent = 'Yüklenemedi';
+        if (llmEl) llmEl.textContent = 'Yüklenemedi';
     }
 }
 

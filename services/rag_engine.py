@@ -543,6 +543,102 @@ class RAGEngine:
         confidence = min(100, int(avg_score * 100))
         return confidence
     
+    def _format_answer(self, answer_text: str, sources: List[Dict], confidence: float, is_context_only: bool = False) -> str:
+        """
+        Format answer with beautiful template for Turkish legal documents
+        
+        Args:
+            answer_text: Generated or retrieved answer text
+            sources: List of source metadata
+            confidence: Average confidence score (0-1)
+            is_context_only: Whether this is direct context (not LLM generated)
+        
+        Returns:
+            Formatted answer string
+        """
+        confidence_pct = int(confidence * 100)
+        
+        # Build formatted answer
+        parts = []
+        
+        # Main answer section
+        parts.append("💬 CEVAP")
+        parts.append("─" * 60)
+        
+        if is_context_only:
+            # For context-only, show as quote
+            parts.append("Aşağıdaki metin, sorunuzla ilgili bulunan en uygun bölümdür:\n")
+        
+        # Clean and format answer text
+        answer_clean = answer_text.strip()
+        if not answer_clean.endswith(('.', '!', '?')):
+            answer_clean += "."
+        
+        parts.append(answer_clean)
+        parts.append("")  # Empty line
+        
+        # Source section
+        parts.append("📚 KAYNAK BİLGİLERİ")
+        parts.append("─" * 60)
+        
+        primary_source = sources[0] if sources else None
+        if primary_source:
+            # Get location info from chunk (we need to pass chunks too, or find a way)
+            # For now, use article if available
+            article = primary_source.get('article')
+            
+            if article:
+                # Show article reference as primary location
+                parts.append(f"📍 Konum: {article}")
+            else:
+                # Fallback to chunk-based location info
+                chunk_id = primary_source.get('chunk_id', 0)
+                if chunk_id > 0:
+                    parts.append(f"📍 Konum: Bölüm {chunk_id}")
+                else:
+                    parts.append(f"📍 Konum: Belirtilmemiş")
+        
+        # Additional sources if available
+        if len(sources) > 1:
+            additional_locs = []
+            for src in sources[1:]:
+                article = src.get('article')
+                if article:
+                    additional_locs.append(article)
+                else:
+                    chunk_id = src.get('chunk_id', 0)
+                    if chunk_id > 0:
+                        additional_locs.append(f"Bölüm {chunk_id}")
+            
+            if additional_locs:
+                parts.append(f"\n📋 Ek Referanslar: {', '.join(additional_locs[:3])}")
+            else:
+                parts.append(f"\n📋 Ek Referanslar: {len(sources) - 1} adet")
+        
+        parts.append("")  # Empty line
+        
+        # Confidence indicator
+        parts.append("📊 GÜVEN SEVİYESİ")
+        parts.append("─" * 60)
+        
+        if confidence_pct >= 80:
+            confidence_emoji = "🟢"
+            confidence_text = "Yüksek"
+        elif confidence_pct >= 50:
+            confidence_emoji = "🟡"
+            confidence_text = "Orta"
+        else:
+            confidence_emoji = "🔴"
+            confidence_text = "Düşük"
+        
+        parts.append(f"{confidence_emoji} {confidence_text} ({confidence_pct}%)")
+        
+        # Warning for low confidence
+        if confidence_pct < 50:
+            parts.append("\n⚠️  Bu cevaba düşük güvenle ulaştım. Daha spesifik bir soru sormayı deneyebilirsiniz.")
+        
+        return "\n".join(parts)
+    
     def generate_answer(self, query: str, use_llm=None) -> Dict:
         """
         Generate answer using retrieved context
@@ -602,19 +698,19 @@ class RAGEngine:
             try:
                 generated_answer = self._generate_with_llm(query, combined_context)
                 
-                # Format answer with source citation
-                source_info = f"\n\n📚 Kaynak: {sources[0]['source']}"
-                if sources[0].get('article'):
-                    source_info += f"\n📜 {sources[0]['article']}"
-                
-                answer_with_source = f"{generated_answer}{source_info}"
+                # Format answer with beautiful template
+                formatted_answer = self._format_answer(
+                    generated_answer, 
+                    sources, 
+                    avg_confidence
+                )
                 
                 # Check confidence and add warning if low
                 confidence_pct = float(avg_confidence * 100)
                 low_confidence = confidence_pct < 50
                 
                 result = {
-                    'answer': answer_with_source,
+                    'answer': formatted_answer,
                     'confidence': confidence_pct,
                     'sources': sources,
                     'num_sources': len(sources),
@@ -634,18 +730,19 @@ class RAGEngine:
                 print(f"      💡 Retrieval-only cevap döndürülüyor...")
         
         # Fallback: Return retrieved context
-        source_info = f"📚 Kaynak: {sources[0]['source']}"
-        if sources[0].get('article'):
-            source_info += f"\n📜 {sources[0]['article']}"
-        
-        answer_with_source = f"{combined_context}\n\n{source_info}"
+        formatted_answer = self._format_answer(
+            combined_context,
+            sources,
+            avg_confidence,
+            is_context_only=True
+        )
         
         # Check confidence
         confidence_pct = float(avg_confidence * 100)
         low_confidence = confidence_pct < 50
         
         result = {
-            'answer': answer_with_source,
+            'answer': formatted_answer,
             'confidence': confidence_pct,
             'sources': sources,
             'num_sources': len(sources),
