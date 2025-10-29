@@ -654,17 +654,24 @@ class RAGEngine:
             chunk_id = src.get('chunk_id', 0)
             return f"Bölüm {chunk_id}" if chunk_id else "Konum"
 
-        # Build formatted answer in a clean, minimal structure
+        # Build formatted answer with clear markdown structure
         parts: List[str] = []
+        
+        # Clean answer text (remove any trailing punctuation we'll add)
+        answer_clean = answer_text.strip().rstrip(".!?")
+        if not answer_clean:
+            answer_clean = "Cevap bulunamadı."
 
-        # CEVAP
-        parts.append("CEVAP")
-        parts.append("- " + answer_text.strip().rstrip(".!") + ".")
+        # CEVAP section (bold header)
+        parts.append("**CEVAP**")
+        parts.append("")
+        parts.append(answer_clean + ".")
         parts.append("")
 
-        # DAYANAK (up to top-3)
+        # DAYANAK section (up to top-3)
         if sources:
-            parts.append("DAYANAK")
+            parts.append("**DAYANAK**")
+            parts.append("")
             for src in sources[:3]:
                 label = _loc_label(src)
                 quote = _short_quote(src.get('preview') or src.get('text') or '')
@@ -674,17 +681,22 @@ class RAGEngine:
                     parts.append(f"- Anayasa {label}")
             parts.append("")
 
-        # GÜVEN
+        # GÜVEN section
         if confidence_pct >= 80:
             conf_text = "Yüksek"
+            conf_emoji = "✓"
         elif confidence_pct >= 50:
             conf_text = "Orta"
+            conf_emoji = "⚠"
         else:
             conf_text = "Düşük"
-        parts.append("GÜVEN")
-        parts.append(f"- {conf_text} ({confidence_pct}%)")
+            conf_emoji = "✗"
+        
+        parts.append("**GÜVEN SEVİYESİ**")
+        parts.append("")
+        parts.append(f"{conf_emoji} {conf_text} ({confidence_pct}%)")
 
-        return "\n".join(parts)
+        return "\n\n".join(parts)
     
     def generate_answer(self, query: str, use_llm=None) -> Dict:
         """
