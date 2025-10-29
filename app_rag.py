@@ -9,6 +9,7 @@ os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+import requests
 from dotenv import load_dotenv
 
 # Import OOP components
@@ -261,6 +262,30 @@ def get_models():
             llm_backend, 
             llm_config
         )
+
+        # Optional: verify via Ollama API if backend is ollama
+        ollama_meta = None
+        quant_verified = False
+        if llm_backend == 'ollama':
+            try:
+                base_url = os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434').rstrip('/')
+                model_tag = os.getenv('OLLAMA_MODEL', '')
+                if model_tag:
+                    resp = requests.post(f"{base_url}/api/show", json={"model": model_tag}, timeout=3)
+                    if resp.ok:
+                        data = resp.json()
+                        # Compact metadata for UI
+                        ollama_meta = {
+                            'model': data.get('model'),
+                            'modified_at': data.get('modified_at'),
+                            'size': data.get('size'),
+                            'digest': data.get('digest'),
+                            'parameters': data.get('parameters'),
+                            'quantization': 'q4_k_m' if 'q4_k_m' in model_tag.lower() else None
+                        }
+                        quant_verified = 'q4_k_m' in model_tag.lower()
+            except Exception:
+                pass
         
         return jsonify({
             'embedding_model': {
@@ -279,7 +304,9 @@ def get_models():
                 'quantization': quantization_info,
                 'model_path': model_path,
                 'device': getattr(llm_config, 'device', 'cpu'),
-                'dtype': getattr(llm_config, 'dtype', 'float32')
+                'dtype': getattr(llm_config, 'dtype', 'float32'),
+                'quantization_verified': quant_verified,
+                'ollama': ollama_meta
             },
             'reranker': {
                 'name': config.get_reranker_model().display_name,
