@@ -857,14 +857,30 @@ class RAGEngine:
         # Generate answer with LLM
         combined_context = "\n\n".join(contexts[:2])
         
+        full_answer = ""
         if self.llm_model and self.llm_tokenizer:
             # Stream LLM response
             for token in self._generate_with_llm_stream(query, combined_context):
+                full_answer += token
                 yield "data: " + json.dumps({'type': 'token', 'content': token}) + "\n\n"
         else:
             # Fallback: stream retrieved context
+            full_answer = combined_context
             for word in combined_context.split():
                 yield "data: " + json.dumps({'type': 'token', 'content': word + ' '}) + "\n\n"
+        
+        # Format the complete answer with template
+        formatted_answer = self._format_answer(
+            full_answer if full_answer.strip() else combined_context,
+            sources,
+            avg_confidence
+        )
+        
+        # Send formatted result
+        yield "data: " + json.dumps({
+            'type': 'formatted',
+            'content': formatted_answer
+        }) + "\n\n"
         
         # Send completion
         yield "data: " + json.dumps({'type': 'done'}) + "\n\n"

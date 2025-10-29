@@ -254,6 +254,10 @@ async function sendMessage() {
                             // Append token to text
                             fullText += data.content;
                             updateStreamingContent(streamingMsgId, fullText);
+                        } else if (data.type === 'formatted') {
+                            // Replace with formatted version
+                            fullText = data.content;
+                            updateStreamingContent(streamingMsgId, fullText);
                         } else if (data.type === 'done') {
                             // Finalize message
                             finalizeStreamingMessage(streamingMsgId, fullText, metadata);
